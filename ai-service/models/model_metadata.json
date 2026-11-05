@@ -1,0 +1,19 @@
+{
+  "status": "training_required",
+  "architecture": "MobileNetV2 transfer learning",
+  "input_size": [224, 224],
+  "color_mode": "RGB",
+  "preprocessing": "Convert RGB pixels to float32 0..255; model applies tf.keras.applications.mobilenet_v2.preprocess_input internally.",
+  "supported_crop_count": 14,
+  "class_count": 38,
+  "training_dataset": {
+    "name": "PlantVillage color",
+    "url": "https://huggingface.co/datasets/mohanty/PlantVillage",
+    "license": "CC-BY-SA-3.0",
+    "notes": "PlantVillage leaf images are predominantly collected under controlled conditions; field performance may differ."
+  },
+  "model_version": "1.0.0",
+  "evaluation_metrics": null,
+  "confidence_threshold": 0.65,
+  "top_prediction_margin_threshold": 0.12
+}

@@ -59,6 +59,22 @@ function cropImageForm({ buffer, mime = 'image/png', filename = 'plant.png' }) {
   return form
 }
 
+async function withAiServiceResponse(body, status, run) {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (input, options) => {
+    const url = typeof input === 'string' ? input : input.url
+    if (url.startsWith(config.AI_SERVICE_URL)) {
+      return Response.json(body, { status })
+    }
+    return originalFetch(input, options)
+  }
+  try {
+    return await run()
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+}
+
 test('health reports SQLite and whether Gemini is configured without exposing credentials', async () => {
   const response = await request('/api/health')
   assert.equal(response.status, 200)
@@ -142,7 +158,7 @@ test('invalid input receives a useful validation response', async () => {
   assert.match((await response.json()).error, /valid email/)
 })
 
-test('Crop Doctor rejects unauthenticated, unsupported, malformed, and oversized uploads without a Gemini key', async () => {
+test('Crop Doctor rejects unauthenticated, unsupported, malformed, and oversized uploads', async () => {
   const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
   const unauthenticated = await request('/api/crop-doctor/diagnose', {
     method: 'POST',
@@ -174,15 +190,88 @@ test('Crop Doctor rejects unauthenticated, unsupported, malformed, and oversized
   })
   assert.equal(oversized.status, 413)
 
-  const missingKey = await request('/api/crop-doctor/diagnose', {
-    method: 'POST',
-    token,
-    body: cropImageForm({ buffer: pngSignature }),
-  })
-  assert.equal(missingKey.status, 503)
-  assert.match((await missingKey.json()).error, /GEMINI_API_KEY/)
+  const modelMissing = await withAiServiceResponse(
+    { detail: 'plant_disease_model.keras is not installed.' },
+    503,
+    () => request('/api/crop-doctor/diagnose', {
+      method: 'POST',
+      token,
+      body: cropImageForm({ buffer: pngSignature }),
+    }),
+  )
+  assert.equal(modelMissing.status, 503)
+  assert.match((await modelMissing.json()).error, /plant_disease_model\.keras/)
   const history = await request('/api/crop-doctor/history', { token })
   assert.deepEqual((await history.json()).diagnoses, [])
+})
+
+test('Crop Doctor supported-crops endpoint reports readiness and rejects malformed model responses', async () => {
+  const supported = await withAiServiceResponse(
+    { modelLoaded: false, message: 'Model weights are not installed.', crops: [{ crop: 'Tomato', diseases: ['healthy'] }] },
+    200,
+    () => request('/api/crop-doctor/supported-crops'),
+  )
+  assert.equal(supported.status, 200)
+  assert.equal((await supported.json()).modelLoaded, false)
+
+  const invalid = await withAiServiceResponse(
+    { modelLoaded: true, crops: [{ crop: 42, diseases: [] }] },
+    200,
+    () => request('/api/crop-doctor/supported-crops'),
+  )
+  assert.equal(invalid.status, 502)
+  assert.match((await invalid.json()).error, /invalid supported-crops response/)
+})
+
+test('Crop Doctor validates the model response and saves a private diagnosis history entry', async () => {
+  const token = await createAccount('PlantVillage Diagnosis')
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY7sAAAAASUVORK5CYII=', 'base64')
+  const modelResult = {
+    success: true,
+    crop: 'Tomato',
+    predictedDisease: 'Early blight',
+    confidence: 0.91,
+    status: 'possible_detection',
+    topPredictions: [{ crop: 'Tomato', disease: 'Early blight', confidence: 0.91 }],
+    modelVersion: '1.0.0-test',
+    message: 'Possible visual match, not a confirmed diagnosis.',
+    knowledge: {
+      available: false,
+      symptoms: [],
+      possibleCauses: [],
+      conduciveConditions: [],
+      prevention: [],
+      nextSteps: [],
+      source: null,
+      verifiedAt: null,
+    },
+  }
+  const response = await withAiServiceResponse(modelResult, 200, () => request('/api/crop-doctor/diagnose', {
+    method: 'POST',
+    token,
+    body: cropImageForm({ buffer: png }),
+  }))
+  assert.equal(response.status, 201)
+  const { diagnosis } = await response.json()
+  assert.equal(diagnosis.predictionStatus, 'possible_detection')
+  assert.equal(diagnosis.diseaseName, 'Early blight')
+  assert.equal(diagnosis.modelVersion, '1.0.0-test')
+
+  const historyResponse = await request('/api/crop-doctor/history', { token })
+  const { diagnoses } = await historyResponse.json()
+  assert.equal(diagnoses.length, 1)
+  assert.equal(diagnoses[0].id, diagnosis.id)
+
+  const removed = await request(`/api/crop-doctor/history/${diagnosis.id}`, { method: 'DELETE', token })
+  assert.equal(removed.status, 204)
+
+  const invalidModelResponse = await withAiServiceResponse({}, 200, () => request('/api/crop-doctor/diagnose', {
+    method: 'POST',
+    token,
+    body: cropImageForm({ buffer: png }),
+  }))
+  assert.equal(invalidModelResponse.status, 502)
+  assert.match((await invalidModelResponse.json()).error, /invalid response/)
 })
 
 test('Crop Doctor history, images, and deletion are scoped to the authenticated farmer', async () => {

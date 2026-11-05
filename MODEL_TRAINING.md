@@ -1,0 +1,38 @@
+# PlantVillage model training
+
+The repository does not contain trained model weights. Crop Doctor is intentionally unavailable until the Colab training workflow has produced and installed them; it does not fall back to Gemini or invent predictions.
+
+## Train in Google Colab
+
+1. Review the [PlantVillage dataset card](https://huggingface.co/datasets/mohanty/PlantVillage), its declared CC-BY-SA-3.0 license, the ImageNet weight terms, and the controlled-image limitations before using or redistributing outputs.
+2. Open [MODEL_TRAINING.ipynb](./MODEL_TRAINING.ipynb) in Colab. Select a GPU runtime if available.
+3. Run the notebook cells in order. The first download is about 2 GB. Training can take a while and may need a high-memory/GPU runtime.
+4. Review the printed held-out dataset metrics and keep the downloaded export archive private until its attribution and license obligations are satisfied.
+
+The script loads the `color` configuration from `mohanty/PlantVillage`. It uses the publisher's leaf-grouped test split, and creates a separate training/validation split grouped by `leaf_id` to avoid images of the same leaf leaking between those subsets. It trains MobileNetV2 with ImageNet initialization, augmentation, and fine tuning; reports accuracy, macro precision/recall/F1, a classification report, and confusion matrix; and exports the trained model, class order, and metadata together. These scores describe the dataset split only—not field accuracy, not a clinical/agronomic guarantee, and not a calibrated probability.
+
+## Install the exported files
+
+Extract these three files from the downloaded archive directly into `ai-service/models/`:
+
+- `plant_disease_model.keras`
+- `class_labels.json`
+- `model_metadata.json`
+
+The `.keras` file is ignored by Git because it is a large model artifact. Keep all three files from the same training run together. Do not copy just the labels from another model. The checked-in `model_metadata.json` marks the model as training-required and contains no measured accuracy.
+
+Restart FastAPI from the `ai-service` directory, then check:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+Confirm `modelLoaded` is `true` and `modelVersion` is the exported version. The authenticated Crop Doctor page should then enable image analysis and list supported crops. If loading fails, inspect the health response and AI-service console output.
+
+## Dataset and model limitations
+
+PlantVillage has 38 crop/disease classes across 14 crops. The data consists primarily of controlled-condition leaf images. Real fields include different lighting, backgrounds, varieties, growth stages, mixed symptoms, pests, nutrient stress, and diseases absent from the training labels. A high softmax score cannot rule out these conditions. Low confidence, close top classes, blurred images, unsupported crops, or crop-selection mismatch are reported as inconclusive. The model does not use farmer notes as classifier input.
+
+No verified local treatment knowledge base is included. Do not add pesticide doses or disease-specific treatment claims without authoritative, crop/region-appropriate sources, review, and a verification date. Seek local agricultural extension advice before treatment.
+
+For Python service installation, supported runtime versions, start commands, APIs, and tests, see [API_SETUP.md](./API_SETUP.md) and [ai-service/README.md](./ai-service/README.md).

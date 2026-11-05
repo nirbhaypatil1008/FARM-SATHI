@@ -1,138 +1,120 @@
-# API and voice assistant setup
+# API and model setup
 
 ## What is integrated
 
-| Integration | Purpose | Credential | Where configured |
-|---|---|---|---|
-| Google Gemini Developer API (`@google/genai`) | Authenticated text chat and structured multimodal Crop Doctor visual screening | `GEMINI_API_KEY` from Google AI Studio | `server/.env` only |
-| Open-Meteo Geocoding + Forecast APIs | Location lookup and current/seven-day weather | No API key for the current public endpoint | Browser requests via the app's Weather page and dashboard |
-| Browser Web Speech API | Speech recognition where available | No app API key; browser permission/provider support required | Browser/device |
-| Browser SpeechSynthesis API | Spoken AI replies with pause/resume/stop | No app API key; installed system voices required | Browser/device |
-| SQLite (`better-sqlite3`) | Local accounts, chat and private diagnosis history | No separate database credentials | `server/.env` `DATABASE_PATH` |
+| Integration | Use | Credential and configuration |
+|---|---|---|
+| Google Gemini Developer API | Farming chat and streamed replies only | `GEMINI_API_KEY` in `server/.env` |
+| TensorFlow/Keras MobileNetV2 | PlantVillage crop/disease image classification through the local FastAPI service | No API key; trained model files in `ai-service/models/` |
+| Open-Meteo Geocoding and Forecast APIs | Location search and current/seven-day weather | No key configured; browser requests |
+| Browser Web Speech APIs | Voice input and spoken chat replies where supported | No app key; browser/device permission and installed voices |
+| SQLite | Local account, chat, and private diagnosis history | `DATABASE_PATH` in `server/.env` |
 
-Maps, Agmarknet prices, OpenWeather, cloud speech transcription, MySQL and a separate Python AI service are **not integrated**. The Crop Doctor is a Gemini multimodal visual screening aid, not a dedicated or clinically/agronomically validated classifier; it cannot confirm pathogens. The app links to official mandi/scheme portals rather than claiming to show connected live data.
+Maps, Agmarknet prices, OpenWeather, cloud speech transcription, MySQL, and a hosted AI inference API are not integrated. Gemini is not used to classify Crop Doctor images. No prediction is fabricated when the trained model or service is unavailable.
 
-## Requirements and installation
+## Requirements and local setup
 
-Use Node.js 20.19+ or 22.12+ (required by the current Vite version) and npm. From the project root:
+Use Node.js 20.19+ or 22.12+ and npm. The Python AI service requires a Python version and operating system supported by the selected TensorFlow release; see [TensorFlow's install guide](https://www.tensorflow.org/install/pip). Python 3.14 is not supported by the current TensorFlow dependency range. Linux/WSL is recommended if native Windows TensorFlow wheels are unavailable.
 
-```sh
-npm install
-npm install --prefix server
-```
-
-`server/.env.example` documents backend settings. A local `server/.env` is included with an empty Gemini key and a placeholder JWT secret; it is ignored by Git. Replace the JWT secret with a random value of at least 32 characters and put your own Gemini key in this file. Never put private credentials in React/Vite `VITE_*` variables.
-
-Example:
-
-```env
-PORT=5000
-NODE_ENV=development
-CLIENT_URL=http://localhost:5173
-JWT_SECRET=<random-secret-at-least-32-characters>
-JWT_EXPIRES_IN=7d
-DATABASE_PATH=./data/farm-saathi.sqlite
-GEMINI_API_KEY=<your-key>
-GEMINI_MODEL=gemini-2.5-flash
-```
-
-Generate a JWT secret with PowerShell:
+From the project root, install the web and API dependencies:
 
 ```powershell
-node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
+npm install
+npm install --prefix server
+Copy-Item server\.env.example server\.env
 ```
 
-Start the backend and web app together:
+Edit `server/.env`; set a random `JWT_SECRET` of at least 32 characters and, if you want chat, your own `GEMINI_API_KEY`. The local `.env` is ignored by Git. Never put secrets in React code or `VITE_*` variables.
 
-```sh
+Train and install the image classifier as described in [MODEL_TRAINING.md](./MODEL_TRAINING.md). Then in a separate terminal, from the project root:
+
+```powershell
+py -3.13 -m venv ai-service\.venv
+ai-service\.venv\Scripts\Activate.ps1
+python -m pip install -r ai-service\requirements.txt
+Copy-Item ai-service\.env.example ai-service\.env
+Set-Location ai-service
+python run.py
+```
+
+Use a TensorFlow-compatible Python version in place of `-3.13` if necessary. Keep `MODEL_DIR` relative to the AI service's working directory, or set it to the model export directory. In another terminal, run:
+
+```powershell
 npm run dev:all
 ```
 
-The web app is at `http://localhost:5173`; the API is at `http://localhost:5000`. Vite proxies `/api` requests to the backend. Alternatively, use two terminals with `npm run server:dev` and `npm run dev`. The backend creates its SQLite database at `server/data/farm-saathi.sqlite`.
+The web app is at `http://localhost:5173`, the Express API at `http://localhost:5000`, and the AI service at `http://127.0.0.1:8000`. Vite proxies `/api` requests to Express. The backend defaults `AI_SERVICE_URL` to `http://127.0.0.1:8000`; change it in `server/.env` only when the AI service is at another trusted internal address. Do not expose the model service directly to the public internet.
 
-The API starts without a Gemini key so health, registration, login and local history remain usable. `GET /api/health` reports whether Gemini is configured; chat returns HTTP 503 with instructions if it is not. In production, set a strong `JWT_SECRET`; the server refuses to start with a placeholder or missing secret.
+Without model weights, Crop Doctor stays disabled and explains that the model must be trained/installed. Without a Gemini key, authentication, local history, and Crop Doctor still work; chat reports a useful missing-key error. The Node backend refuses a missing or placeholder JWT secret in production.
 
-## Gemini API
+## Gemini API — farming chat only
 
-1. Read Google's current Gemini API documentation: <https://ai.google.dev/gemini-api/docs>.
-2. Obtain/manage an API key in Google AI Studio: <https://aistudio.google.com/apikey>.
-3. Configure `GEMINI_API_KEY` in `server/.env`, not in the web app.
-4. Configure `GEMINI_MODEL` to a model available to your account. The default is `gemini-2.5-flash`.
-5. Restart the backend. Check `GET http://localhost:5000/api/health`; `gemini.configured` should be `true`.
-6. Create an account on the Assistant page to use chat and Crop Doctor, then ask a question or submit a crop image.
+1. Read the official [Gemini API documentation](https://ai.google.dev/gemini-api/docs).
+2. Obtain/manage a key at [Google AI Studio](https://aistudio.google.com/apikey).
+3. Configure `GEMINI_API_KEY` in `server/.env`. Configure `GEMINI_MODEL` to a model available to your account.
+4. Restart the backend. `GET http://localhost:5000/api/health` reports whether Gemini is configured without returning the key.
+5. Sign in, open the Assistant, and submit a farming question. A real model response requires an available model, a valid key, internet access, and available quota.
 
-Google model availability, pricing, quota and data handling depend on account, region, model and current Google terms. Review Google's official pricing and rate-limit pages before use:
+Pricing, quotas, model availability, and data handling vary by account, region, model, and current Google terms. Check the official [pricing](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), and [terms](https://ai.google.dev/gemini-api/terms) before deployment. Chat sends bounded user-provided farm context to Google and stores conversations locally.
 
-- <https://ai.google.dev/gemini-api/docs/pricing>
-- <https://ai.google.dev/gemini-api/docs/rate-limits>
-- <https://ai.google.dev/gemini-api/terms>
+## Crop Doctor — PlantVillage MobileNetV2
 
-The backend sends a bounded context assembled from the logged-in farmer's browser records (profile, crops/stages, observations, tasks and expense categories). Context is user-provided and may be incomplete. Conversations are stored in the local SQLite database. Do not enter sensitive personal, financial-account or identity-document data.
+The frontend uploads images to authenticated Express routes. Express validates the file, applies a six-analysis-per-minute rate limit, and forwards it to the private FastAPI service. FastAPI validates and preprocesses JPG/JPEG, PNG, or WEBP images (5 MB maximum), then runs the exported MobileNetV2 classifier. Diagnoses and generated image filenames are stored in the existing SQLite `crop_diagnoses` table; files are stored outside the public web root in `server/data/crop-diagnoses/`. History, image access, and deletion are scoped to the signed-in farmer.
 
-## Crop Doctor image screening
+The model recognizes the 38 classes for 14 crops in the PlantVillage color dataset. An optional crop selection is checked against the prediction; a mismatch is marked inconclusive rather than accepted. Low-confidence, close-ranked, unsupported, or blurry images are reported as inconclusive. The model's score is not calibrated field accuracy. No disease-specific treatment guidance is displayed unless a future knowledge-base entry has a source and verification date; no pesticide dosage is generated. Private farmer notes are saved with the report but are not sent to or used by the classifier.
 
-Crop Doctor uses the same server-side Gemini key and configured model; no separate vision credential is required. Gemini models must support image input and structured JSON output. The current default `gemini-2.5-flash` supports multimodal input; confirm the selected model's current availability for your account before deployment.
+The training data is the [Hugging Face PlantVillage dataset](https://huggingface.co/datasets/mohanty/PlantVillage), which declares **CC-BY-SA-3.0**. Review attribution/share-alike requirements and obtain any rights needed for redistribution or commercial use. Dataset images were mostly collected under controlled conditions; held-out dataset metrics must not be presented as field performance. The training script uses ImageNet-pretrained MobileNetV2 weights from Keras; review the associated model and dataset terms before redistribution. See [MODEL_TRAINING.md](./MODEL_TRAINING.md) and the [Colab notebook](./MODEL_TRAINING.ipynb).
 
-- Sign in or create an account through Farm Assistant, then open **Crop Doctor**.
-- Choose a crop, capture a photo with the device camera, or upload a JPG/JPEG, PNG or WEBP image (maximum 5 MB).
-- The backend verifies the upload MIME type and file signature, enforces a six-analysis-per-minute rate limit, and sends the image to Gemini for a constrained structured visual assessment.
-- Analysis includes visible signs and cautious possible causes, with practical low-risk steps. It does not provide chemical names/doses, confirm a pathogen, or claim to be agronomist-reviewed. Confidence is a model estimate, not a calibrated probability. Unclear/non-plant images result in an explicit uncertain response and re-photo guidance.
-- Diagnosis records are stored in `crop_diagnoses` in the configured SQLite database. Uploaded images are stored outside the public web root under `server/data/crop-diagnoses/`, use generated filenames, and are served only after an ownership check. Deleting a diagnosis removes its saved image. The entire `server/data/` directory is ignored by Git.
-- The uploaded image and optional observation text are sent to Google for model processing. Review Google's current [API terms](https://ai.google.dev/gemini-api/terms) and data policies before using real farmer images. Do not upload sensitive people, identity documents, or unrelated private information.
-- A valid Gemini key and internet access are required for an actual assessment. Missing keys, invalid model responses, unclear images, or network/provider failures produce errors rather than mock diagnoses.
+Check readiness:
 
-Authenticated routes:
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8000/api/disease/supported-crops
+```
 
-- `POST /api/crop-doctor/diagnose` — multipart fields `image`, `cropName`, and optional `observations`.
-- `GET /api/crop-doctor/history` — the signed-in farmer's last 100 diagnosis reports.
-- `GET /api/crop-doctor/history/:id/image` — an owned report image; requires a Bearer token.
-- `DELETE /api/crop-doctor/history/:id` — delete an owned report and its image.
+`modelLoaded` must be `true` before predictions can run. Authenticated application routes:
 
-## Weather API
+- `GET /api/crop-doctor/supported-crops` — model status and available crop classes.
+- `POST /api/crop-doctor/diagnose` — multipart `image`, optional `cropName`, and optional private `observations`.
+- `GET /api/crop-doctor/history` — the farmer's latest 100 diagnoses.
+- `GET /api/crop-doctor/history/:id/image` — an owned image.
+- `DELETE /api/crop-doctor/history/:id` — delete an owned diagnosis and its image.
 
-The app calls Open-Meteo's public geocoding and forecast endpoints directly from the browser; it does not use or require an OpenWeather key.
+These are internal application routes, not external provider APIs. No model-serving API key is required. The model runs locally; image bytes are not sent to Gemini or a third-party inference API.
+
+## Weather
+
+Weather and geocoding use [Open-Meteo's public APIs](https://open-meteo.com/en/docs) directly from the browser and need internet access, not an OpenWeather key:
 
 - Geocoding: <https://geocoding-api.open-meteo.com/v1/search>
 - Forecast: <https://api.open-meteo.com/v1/forecast>
-- Documentation: <https://open-meteo.com/en/docs>
-- Pricing / terms: <https://open-meteo.com/en/pricing>
+- Current pricing and terms: <https://open-meteo.com/en/pricing>
 
-The app needs internet access and displays a visible error if the request fails. Confirm the current service terms, attribution and usage limits before production or commercial use. Forecasts are not official emergency warnings.
+Check current attribution, usage, and pricing terms for your deployment. Forecasts are not official emergency warnings.
 
-## Authentication and chat API
+## Authentication, chat, and voice
 
-The Express API validates input, rate-limits auth/chat routes, hashes account passwords with Node's scrypt, signs JWTs, and scopes conversation queries/deletions to the authenticated user.
+The Express API validates requests, rate-limits auth/chat routes, hashes passwords with Node's scrypt, signs JWTs, and scopes conversation/diagnosis queries to the authenticated user.
 
-- `POST /api/auth/register` — `{ "name", "email", "password" }`; password minimum 10 characters.
-- `POST /api/auth/login` — `{ "email", "password" }`.
-- `GET /api/auth/me` — current account (Bearer token).
-- `POST /api/chat` — non-streaming Gemini reply (Bearer token).
-- `POST /api/chat/stream` — server-sent event Gemini reply (Bearer token).
-- `GET /api/chat/history` — conversations and their messages (Bearer token).
-- `POST /api/chat/new` — create an empty conversation (Bearer token).
-- `DELETE /api/chat/history/:id` — delete an owned conversation and messages (Bearer token).
-- `GET /api/health` — service status and Gemini configuration (no secret is returned).
+- `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
+- `POST /api/chat`, `POST /api/chat/stream`
+- `GET /api/chat/history`, `POST /api/chat/new`, `DELETE /api/chat/history/:id`
+- `GET /api/health`
 
-SQLite is used because this project did not include a database or server. It is local development persistence, not a production multi-instance database. Back up `server/data/farm-saathi.sqlite`; use a managed database and TLS for production.
+Voice input and output use browser `SpeechRecognition`/`webkitSpeechRecognition` and `SpeechSynthesis`. No audio is sent to this app's backend, so a separate transcription API key and `/api/voice/transcribe` endpoint are not needed. Microphone permission and a secure context (HTTPS or localhost) are required; Kannada, other Indian languages, and pause/resume behavior depend on browser/device support and installed voices. If recognition is unavailable or permission is denied, text chat remains available.
 
-## Voice
+SQLite is local development persistence, not a production multi-instance database. Use TLS and a managed database for production.
 
-Voice is implemented using native browser speech APIs: `SpeechRecognition` / `webkitSpeechRecognition` for input and `SpeechSynthesis` for output. No audio is sent to this app's backend and no `/api/voice/transcribe` endpoint is needed. Browser/device vendors may provide speech services under their own privacy, availability and quota terms; support, Kannada/Indian language recognition, and voices vary by browser, operating system and region. Microphone permission and a secure context (HTTPS, or localhost) are required. If recognition is unavailable or permission is denied, the app provides a text entry fallback and explains the issue.
-
-AI replies include Listen, Pause/Resume and Stop controls. Speech uses the selected language if an installed voice supports it; text remains available regardless.
-
-## Tests and checks
+## Tests
 
 From the project root:
 
-```sh
+```powershell
 npm run build
 npm run lint
 npm --prefix server test
+Set-Location ai-service
+python -m unittest discover -s tests
 ```
 
-The backend tests cover health/config reporting, account registration and login, authorization, SQLite history, conversation ownership, missing-key errors, stream error handling, upload type/signature/size validation, and Crop Doctor history ownership. A live Gemini text or image generation requires a valid key and available model; the test suite never fabricates a successful model reply.
-
-## Features without credentials
-
-Profile/farm records, crop plans, crop stages/observations, expenses, calendar tasks, EMI calculation, local auth/chat history, official portal links, and browser speech (where supported) work without provider keys. Live weather works without a key but requires internet. Real Gemini chat and Crop Doctor visual screening require a valid server-side Gemini key. Maps, live mandi values and push notifications remain unavailable until their integrations are separately implemented.
+The backend tests use a stubbed model-service HTTP response for API contract/persistence checks; they do not represent a trained model prediction. Python tests use stub predictions for classifier decision logic. A live inference requires installing model weights produced by Colab. Check [MODEL_TRAINING.md](./MODEL_TRAINING.md) before claiming model metrics or a working diagnosis demonstration.

@@ -532,6 +532,7 @@ function BudgetPage() {
 function DiseasePage() {
   const { crops } = useFarm()
   const token = localStorage.getItem(CHAT_TOKEN_KEY) || ''
+  const [supportedCropInfo, setSupportedCropInfo] = useState({ crops: [], modelLoaded: false, message: 'Checking model status…' })
   const [cropName, setCropName] = useState('')
   const [observations, setObservations] = useState('')
   const [file, setFile] = useState(null)
@@ -562,6 +563,22 @@ function DiseasePage() {
       setHistoryStatus('error')
     }
   }, [token])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/crop-doctor/supported-crops', { signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(body.error || 'Could not load supported crops.')
+        if (!controller.signal.aborted) setSupportedCropInfo(body)
+      })
+      .catch((requestError) => {
+        if (!controller.signal.aborted) {
+          setSupportedCropInfo({ crops: [], modelLoaded: false, message: requestError.message || 'AI service is unavailable.' })
+        }
+      })
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -629,7 +646,6 @@ function DiseasePage() {
     event.preventDefault()
     if (!token) return setError('Sign in before running a private crop diagnosis.')
     if (!file) return setError('Take or choose a plant image first.')
-    if (!cropName.trim()) return setError('Enter the crop shown in the photo.')
     setLoading(true)
     setProgress(0)
     setError('')
@@ -668,11 +684,12 @@ function DiseasePage() {
     && (!dateFilter || diagnosis.createdAt.slice(0, 10) === dateFilter))
 
   return <div className="m-page">
-    <Heading eyebrow="AI Crop Doctor" title="Check a crop from a photo" detail="Gemini vision provides a cautious visual screening. It is not a laboratory result or an agronomist-confirmed diagnosis." />
+    <Heading eyebrow="AI Crop Doctor" title="Check a crop from a photo" detail="MobileNetV2 screens the image against PlantVillage leaf classes. Results are not a confirmed diagnosis and may not reflect field conditions." />
     {!token ? <Card className="m-doctor-signin"><span className="m-crop-doctor-icon">✚</span><div><h2>Sign in to analyze and save reports</h2><p>Crop images and diagnosis history are private to your account. Sign in or create an account to continue.</p><NavLink className="m-button primary" to="/ai-assistant">Sign in to Farm Assistant</NavLink></div></Card> : <>
+      {!supportedCropInfo.modelLoaded && <p className="m-error" role="status">{supportedCropInfo.message || 'The trained TensorFlow model is not installed yet.'} Prediction is disabled until the AI model is set up. See MODEL_TRAINING.md.</p>}
       <Card>
         <form className="m-doctor-form" onSubmit={submitImage}>
-          <label className="m-field-label">Crop in the photo<input list="registered-crops" value={cropName} onChange={(event) => setCropName(event.target.value)} maxLength={80} placeholder="e.g. Tomato, potato, rice" required /><datalist id="registered-crops">{crops.map((crop) => <option key={crop.id} value={crop.name} />)}</datalist></label>
+          <label className="m-field-label">Crop in the photo (optional)<input list="supported-crops" value={cropName} onChange={(event) => setCropName(event.target.value)} maxLength={80} placeholder="Choose a supported crop or leave blank for model classification" /><datalist id="supported-crops">{supportedCropInfo.crops.map((crop) => <option key={crop.crop} value={crop.crop} />)}{crops.map((crop) => <option key={`registered-${crop.id}`} value={crop.name} />)}</datalist></label>
           <div className="m-doctor-upload">
             {previewUrl ? <img src={previewUrl} alt="Selected plant for AI visual screening" /> : <div className="m-doctor-placeholder"><span>♧</span><b>Choose a clear photo of the affected plant</b><small>Include the whole plant and a close-up of affected leaves when possible.</small></div>}
             <div className="m-doctor-upload-actions">
@@ -681,10 +698,10 @@ function DiseasePage() {
               {file && <><span className="m-muted">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</span><button className="m-delete" type="button" onClick={() => { setFile(null); setPreviewUrl(''); setProgress(0) }}>Remove image</button></>}
             </div>
           </div>
-          <label className="m-field-label">What changes have you noticed? (optional)<textarea rows="3" maxLength="800" value={observations} onChange={(event) => setObservations(event.target.value)} placeholder="For example: spots began on older leaves after several rainy days." /></label>
-          {loading && <div className="m-doctor-progress" role="status"><div><b>{progress < 100 ? 'Uploading image securely…' : 'Gemini is reviewing visible plant signs…'}</b><span>{progress}% uploaded</span></div><progress max="100" value={progress} /><small>The image is sent to Google's Gemini service for a structured visual assessment. If camera access is unavailable, allow camera permission or use Upload image.</small></div>}
+          <label className="m-field-label">Private note for your history (not sent to the AI model)<textarea rows="3" maxLength="800" value={observations} onChange={(event) => setObservations(event.target.value)} placeholder="For example: spots began on older leaves after several rainy days." /></label>
+          {loading && <div className="m-doctor-progress" role="status"><div><b>{progress < 100 ? 'Uploading image securely…' : 'MobileNetV2 is analyzing the image…'}</b><span>{progress}% uploaded</span></div><progress max="100" value={progress} /><small>Analysis runs through the private backend and local TensorFlow service. If camera access is unavailable, allow camera permission or use Upload image.</small></div>}
           {error && <p className="m-error" role="alert">{error}</p>}
-          <Button type="submit" disabled={loading || !file}>{loading ? 'Analyzing…' : 'Analyze plant image'}</Button>
+          <Button type="submit" disabled={loading || !file || !supportedCropInfo.modelLoaded}>{loading ? 'Analyzing…' : 'Analyze plant image'}</Button>
         </form>
       </Card>
       {selectedDiagnosis && <DiagnosisReport diagnosis={selectedDiagnosis} imageUrl={reportImage?.id === selectedDiagnosis.id ? reportImage.url || '' : ''} imageError={reportImage?.id === selectedDiagnosis.id ? reportImage.error || '' : ''} onClose={() => setSelectedDiagnosis(null)} />}
@@ -696,7 +713,7 @@ function DiseasePage() {
           {filteredDiagnoses.length ? <div className="m-doctor-history">{filteredDiagnoses.map((diagnosis) => <article key={diagnosis.id}><span className={`m-doctor-severity ${diagnosis.severity}`}>{diagnosis.severity === 'unknown' ? 'Uncertain' : diagnosis.severity}</span><div><b>{diagnosis.plantName} · {diagnosis.diseaseName}</b><small>{new Date(diagnosis.createdAt).toLocaleString()} · model-estimated confidence {diagnosis.confidence}%</small></div><button type="button" onClick={() => setSelectedDiagnosis(diagnosis)}>View report</button><button type="button" className="m-delete" onClick={() => removeDiagnosis(diagnosis)}>Delete</button></article>)}</div> : <p className="m-muted">No diagnoses match these filters.</p>}
         </> : <EmptyState title="No diagnoses saved yet" detail="After you analyze a plant photo, its private report and image will appear here." />}
       </Card>
-      <p className="m-warning">AI visual screening can be wrong and cannot confirm pathogens from an image. Confidence is a model estimate, not a calibrated probability. Do not apply pesticide based only on this report; follow the product label and consult a qualified local agriculture professional.</p>
+      <p className="m-warning">PlantVillage photos were mostly taken in controlled conditions. Model confidence is not calibrated field accuracy; similar diseases may look alike. Do not choose a treatment from an image alone. Get advice from a qualified local agriculture professional.</p>
     </>}
   </div>
 }
@@ -705,12 +722,14 @@ function DiagnosisReport({ diagnosis, imageUrl, imageError, onClose }) {
   const listSection = (title, items) => items?.length ? <section><h3>{title}</h3><ul>{items.map((item, index) => <li key={`${title}-${index}`}>{item}</li>)}</ul></section> : null
   const uncertain = diagnosis.assessment !== 'identified'
   return <Card className="m-doctor-report">
-    <div className="m-section-title"><div><span className="m-eyebrow">Visual screening · {new Date(diagnosis.createdAt).toLocaleString()}</span><h2>Assessment for {diagnosis.plantName}</h2></div><button type="button" className="m-plain-action" onClick={onClose}>Close</button></div>
+    <div className="m-section-title"><div><span className="m-eyebrow">PlantVillage model · {new Date(diagnosis.createdAt).toLocaleString()}</span><h2>Assessment for {diagnosis.plantName}</h2></div><button type="button" className="m-plain-action" onClick={onClose}>Close</button></div>
     <div className="m-doctor-report-main">{imageUrl ? <img src={imageUrl} alt={`Saved plant photo for ${diagnosis.plantName}`} /> : <span className="m-doctor-image-placeholder">{imageError || 'Loading private image…'}</span>}
-      <div><span className={`m-doctor-severity ${diagnosis.severity}`}>{diagnosis.severity === 'unknown' ? 'Uncertain' : `${diagnosis.severity} severity`}</span><h3>{diagnosis.diseaseName}</h3><p>Model-estimated confidence: <b>{diagnosis.confidence}%</b></p><small>Not calibrated and not a confirmed diagnosis.</small></div>
+      <div><span className={`m-doctor-severity ${diagnosis.severity}`}>{diagnosis.predictionStatus?.replaceAll('_', ' ') || 'inconclusive'}</span><h3>{diagnosis.diseaseName}</h3><p>Model confidence: <b>{diagnosis.confidence}%</b></p><small>Model v{diagnosis.modelVersion} · not calibrated field accuracy.</small>{diagnosis.message && <p>{diagnosis.message}</p>}</div>
     </div>
     {uncertain && <p className="m-doctor-uncertain" role="status">The image did not provide enough evidence for a reliable disease assessment. Try a close, well-lit photo of one affected leaf and a second photo of the whole plant.</p>}
     <div className="m-doctor-report-grid">
+      {diagnosis.farmerObservations && <section><h3>Your private note</h3><p>{diagnosis.farmerObservations}</p><small>Saved with this report; not used by the image classifier.</small></section>}
+      {diagnosis.topPredictions?.length > 0 && <section><h3>Model top predictions</h3><ul>{diagnosis.topPredictions.map((item, index) => <li key={`${item.crop}-${item.disease}-${index}`}>{item.crop} · {item.disease}: {(item.confidence * 100).toFixed(1)}% model score</li>)}</ul></section>}
       {listSection('Visible symptoms', diagnosis.symptoms)}
       {listSection('Visible signs in this photo', diagnosis.visibleSigns)}
       {listSection('Possible causes to consider', diagnosis.possibleCauses)}
@@ -723,8 +742,9 @@ function DiagnosisReport({ diagnosis, imageUrl, imageError, onClose }) {
       {listSection('Reduce possible spread', diagnosis.preventSpread)}
       {diagnosis.reinspectInDays && <section><h3>Reinspect</h3><p>Check the plant again in about {diagnosis.reinspectInDays} days.</p></section>}
       {listSection('Seek professional help', diagnosis.professionalHelp)}
+      {!diagnosis.knowledge?.available && diagnosis.predictionStatus === 'possible_detection' && <section><h3>Verified treatment guidance</h3><p>No disease-specific guidance from a verified local agricultural source is configured for this class. Consult your KVK or local agriculture department before taking treatment action.</p></section>}
     </div>
-    <p className="m-warning">AI-generated visual guidance only—not verified agricultural advice. No pesticide dosage is provided. Confirm any treatment with your local agriculture extension officer and product label.</p>
+    <p className="m-warning">Automated model classification only—not a confirmed disease or verified treatment recommendation. PlantVillage images do not represent every field or camera condition. Consult a local agriculture professional.</p>
   </Card>
 }
 

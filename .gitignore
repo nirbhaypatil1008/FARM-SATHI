@@ -19,6 +19,11 @@ server/data/
 server/*.sqlite
 server/*.sqlite-shm
 server/*.sqlite-wal
+ai-service/models/*.keras
+__pycache__/
+*.py[cod]
+.venv/
+ai-service/.venv/
 
 # Editor directories and files
 .vscode/*

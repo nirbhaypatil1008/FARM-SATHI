@@ -16,6 +16,7 @@ const environmentSchema = z.object({
   DATABASE_PATH: z.string().default('./data/farm-saathi.sqlite'),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().trim().min(1).default('gemini-2.5-flash'),
+  AI_SERVICE_URL: z.string().url().default('http://127.0.0.1:8000'),
 })
 
 const parsed = environmentSchema.safeParse(process.env)
