@@ -1,16 +1,38 @@
-# React + Vite
+# FARM SAATHI
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A mobile-friendly farming companion MVP built with React, Vite, React Router, and an Express API.
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Use Node.js 20.19+ or 22.12+ and npm. From the project root:
 
-## React Compiler
+```sh
+npm install
+npm install --prefix server
+npm run dev:all
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The web app is at `http://localhost:5173`; the API is at `http://localhost:5000`. Copy settings from `server/.env.example` into the ignored `server/.env`, add your Gemini API key, then restart the backend to enable real AI replies. Without a key, chat displays the backend setup error and does not provide fake answers.
 
-## Expanding the Oxlint configuration
+## Features
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- Editable sample farmer dashboard, local profile, crops/stages/observations, crop planning, calendar, expenses and budget.
+- Live seven-day weather from Open-Meteo (internet required, no key needed).
+- Express API with SQLite accounts and conversation history, scrypt password hashes, JWT auth, request validation, rate limiting, and protected history.
+- Gemini context-aware chat with server-sent event streaming, saved conversations, new/delete, retry, and copy controls.
+- Browser-native speech recognition and speech output with language selector, microphone permission/error messaging, pause/resume and stop. Actual language availability depends on the browser and installed voices.
+- Official external portal links for schemes, crop insurance and mandi data; these features are not represented as connected feeds.
+
+Farm profile and crop records stay in this browser. Chat account data/history are stored in the local backend SQLite file. Do not store sensitive identity or financial-account details. This is a local development MVP, not a production deployment.
+
+## Configuration, external APIs, and testing
+
+See [API_SETUP.md](./API_SETUP.md) for official API links, key setup, endpoints, limitations, and deployment cautions.
+
+```sh
+npm run build
+npm run lint
+npm --prefix server test
+```
+
+Never put private keys in browser code or `VITE_*` variables. Gemini secrets are read only by the backend from `server/.env`.
