@@ -84,10 +84,11 @@ app = FastAPI(
 )
 
 # ----------------- CORS CONFIGURATION -----------------
-# Enables seamless cross-origin requests from the React/Vite frontend
+# Enables seamless cross-origin requests from the React/Vite frontend and Dev Tunnels
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

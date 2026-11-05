@@ -3,7 +3,9 @@
  * Connects React frontend directly to FastAPI Python backend.
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+const API_BASE_URL = (import.meta.env.VITE_API_URL !== undefined && import.meta.env.VITE_API_URL !== '')
+  ? import.meta.env.VITE_API_URL.replace(/\/+$/, '')
+  : '';
 const V1 = '/api/v1';
 
 /**
