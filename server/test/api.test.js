@@ -112,6 +112,14 @@ test('Gemini chat retries temporary provider outages and returns safe actionable
   assert.equal(normalized.status, 503)
   assert.match(normalized.message, /temporarily busy/)
   assert.match(normalizeGeminiError(new Error('{"error":{"code":404}}')).message, /configured Gemini model is unavailable/)
+  const dailyQuota = Object.assign(new Error('429 Rate limit exceeded (limit: 20 requests per day on Free Tier). Please retry in 15h50m11s.'), { status: 429 })
+  assert.match(normalizeGeminiError(dailyQuota).message, /daily API limit.*15h50m11s.*Google AI Studio/)
+  let quotaAttempts = 0
+  await assert.rejects(() => retryGeminiCall(async () => {
+    quotaAttempts += 1
+    throw dailyQuota
+  }), /daily API limit/)
+  assert.equal(quotaAttempts, 1)
   assert.equal(normalizeGeminiError(Object.assign(new Error('High demand'), { code: 'UNAVAILABLE' })).status, 503)
 
   const interactionInput = buildInteractionInput(
@@ -148,6 +156,19 @@ test('Gemini chat retries temporary provider outages and returns safe actionable
   assert.deepEqual(chunks, ['answer'])
   assert.equal(streamAttempts, 2)
 
+  let interactionAttempts = 0
+  const interactionStream = async function* () {
+    yield { event_type: 'step.delta', delta: { type: 'text', text: 'answer' } }
+    yield { event_type: 'interaction.completed', interaction: { status: 'completed' } }
+  }
+  const interactionChunks = []
+  for await (const chunk of retryGeminiStream(async () => {
+    interactionAttempts += 1
+    return interactionStream()
+  })) interactionChunks.push(chunk)
+  assert.equal(interactionAttempts, 1)
+  assert.equal(interactionChunks.length, 2)
+
   let partialStreamAttempts = 0
   const partialStream = async function* () {
     yield { text: 'partial' }
@@ -162,6 +183,21 @@ test('Gemini chat retries temporary provider outages and returns safe actionable
   }, /temporarily busy/)
   assert.deepEqual(partialChunks, ['partial'])
   assert.equal(partialStreamAttempts, 1)
+
+  let incompleteAttempts = 0
+  const incompleteInteractionStream = async function* () {
+    yield { event_type: 'step.delta', delta: { type: 'text', text: 'partial' } }
+    yield { event_type: 'interaction.completed', interaction: { status: 'incomplete' } }
+  }
+  const incompleteChunks = []
+  await assert.rejects(async () => {
+    for await (const chunk of retryGeminiStream(async () => {
+      incompleteAttempts += 1
+      return incompleteInteractionStream()
+    })) incompleteChunks.push(chunk)
+  }, /Check your API quota/)
+  assert.equal(incompleteAttempts, 1)
+  assert.equal(incompleteChunks.length, 1)
 
   let partialInteractionAttempts = 0
   const partialInteractionStream = async function* () {

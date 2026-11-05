@@ -60,11 +60,6 @@
 .m-content { width: min(1440px, 100%); margin: 0 auto; padding: 28px 32px 54px; }
 .m-storage-error { margin: 12px 30px 0; padding: 12px 16px; border: 1px solid #d88a17; border-radius: 12px; color: #69400a; background: #fff1d2; }
 .m-page { display: grid; gap: 20px; }
-.m-demo-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; border: 1px solid #f1d98e; border-radius: 14px; background: #fff7da; }
-.m-demo-banner > span { display: grid; flex: 1 1 220px; gap: 2px; color: #70540b; }
-.m-demo-banner > span b { font-size: .76rem; letter-spacing: .06em; }
-.m-demo-banner > span small { font-size: .77rem; }
-.m-demo-banner .m-button { min-height: 36px; padding: 7px 10px; font-size: .78rem; }
 .m-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .m-heading h1 { margin: 5px 0 6px; }
 .m-heading p { max-width: 760px; margin-bottom: 0; color: var(--muted); }
@@ -345,8 +340,6 @@
   .m-quick-card { min-height: 158px; padding: 14px; }
   .m-dashboard-columns, .m-recommend-grid { grid-template-columns: 1fr; }
   .m-stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .m-demo-banner { align-items: flex-start; }
-  .m-demo-banner > span { flex-basis: 100%; }
   .m-dashboard-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .m-planner-form, .m-crop-form, .m-expense-form { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .m-task-form { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -556,8 +549,6 @@
 }
 .m-app input::placeholder, .m-app textarea::placeholder { color: #8fa99a; }
 .m-app option { color: #fff; background: #103b2b; }
-.m-app .m-demo-banner { border-color: rgba(231,184,102,.3); color: #f4e3bf; background: rgba(106,77,27,.28); backdrop-filter: blur(12px); }
-.m-app .m-demo-banner > span { color: #f4e3bf; }
 .m-app .m-welcome {
   min-height: 270px;
   border-color: rgba(255,255,255,.14);
@@ -812,8 +803,6 @@
 }
 .m-app:not(.dark) input::placeholder, .m-app:not(.dark) textarea::placeholder { color: #718277; }
 .m-app:not(.dark) option { color: #20352a; background: #fff; }
-.m-app:not(.dark) .m-demo-banner { border-color: #ead596; color: #594815; background: rgba(255,248,222,.94); }
-.m-app:not(.dark) .m-demo-banner > span { color: #70540b; }
 .m-app:not(.dark) .m-welcome {
   border-color: rgba(255,255,255,.65);
   background:
@@ -1008,4 +997,30 @@
   .m-chat-main.m-card { padding: 14px; }
   .m-floating-assistant { right: 12px; }
   .m-assistant-launcher { width: 54px; height: 54px; }
+}
+
+/* --- Enhanced Soil Analyzer & Report Styles --- */
+.m-soil-report-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.m-soil-badge-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.m-soil-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; background: var(--soft-green); color: var(--forest); }
+.m-soil-actions { display: flex; gap: 8px; align-items: center; }
+.m-soil-report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 16px 0; }
+.m-soil-card-section { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,0.02); }
+.m-soil-card-section h3 { margin: 0 0 10px; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; color: var(--forest); }
+.m-soil-kv-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 0.9rem; }
+.m-soil-kv-list li { display: grid; gap: 2px; }
+.m-soil-kv-list strong { color: var(--text); }
+.m-soil-kv-list span { color: var(--muted); }
+.m-soil-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.m-soil-chip { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 8px; background: var(--soft-green); color: var(--forest); font-size: 0.82rem; font-weight: 600; }
+.m-soil-measurements-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 12px 0; }
+.m-soil-measurement-item { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(0,0,0,0.02); text-align: center; }
+.m-soil-measurement-item small { display: block; color: var(--muted); font-size: 0.75rem; margin-bottom: 4px; }
+.m-soil-measurement-item b { font-size: 1.1rem; color: var(--forest); }
+.m-soil-optional-toggle { width: 100%; text-align: left; background: transparent; border: 1px dashed var(--line); padding: 10px 14px; border-radius: 10px; font-weight: 600; cursor: pointer; color: var(--forest); display: flex; justify-content: space-between; align-items: center; margin: 10px 0; }
+.m-soil-history-thumb { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); flex-shrink: 0; }
+@media print {
+  body * { visibility: hidden; }
+  .m-doctor-report, .m-doctor-report * { visibility: visible; }
+  .m-doctor-report { position: absolute; left: 0; top: 0; width: 100%; border: none !important; box-shadow: none !important; }
 }

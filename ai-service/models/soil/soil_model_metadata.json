@@ -1,0 +1,56 @@
+{
+  "status": "trained",
+  "model_name": "MobileNetV2 Soil Classifier",
+  "model_version": "1.0.0",
+  "created_at": "2026-11-05T17:42:30.618868+00:00",
+  "architecture": "MobileNetV2 transfer learning (ImageNet initialization)",
+  "input_size": [
+    224,
+    224
+  ],
+  "color_mode": "RGB",
+  "preprocessing": "embedded_mobilenet_v2",
+  "class_count": 7,
+  "classes": [
+    "Alluvial Soil",
+    "Arid Soil",
+    "Black Soil",
+    "Laterite Soil",
+    "Mountain Soil",
+    "Red Soil",
+    "Yellow Soil"
+  ],
+  "training_dataset": {
+    "name": "Comprehensive Soil Classification Dataset",
+    "citation": "Farhan Sheth et al., Engineering Applications of Artificial Intelligence (Elsevier, 2025)",
+    "license": "CC-BY-NC-4.0",
+    "total_images": 1189,
+    "classes": [
+      "Alluvial Soil",
+      "Arid Soil",
+      "Black Soil",
+      "Laterite Soil",
+      "Mountain Soil",
+      "Red Soil",
+      "Yellow Soil"
+    ],
+    "class_distribution": {
+      "Alluvial Soil": 52,
+      "Arid Soil": 284,
+      "Black Soil": 255,
+      "Laterite Soil": 219,
+      "Mountain Soil": 201,
+      "Red Soil": 109,
+      "Yellow Soil": 69
+    }
+  },
+  "evaluation_metrics": {
+    "test_accuracy": 0.7933,
+    "test_precision_macro": 0.8183,
+    "test_recall_macro": 0.7156,
+    "test_f1_macro": 0.745,
+    "test_sample_count": 179
+  },
+  "confidence_threshold": 0.45,
+  "top_prediction_margin_threshold": 0.1
+}

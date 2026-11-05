@@ -51,13 +51,12 @@ function useStoredState(key, initialValue) {
       const saved = localStorage.getItem(`farm-saathi:${key}`)
       if (!saved) return initialValue
       const parsed = JSON.parse(saved)
-      const hasDemoModeSetting = localStorage.getItem('farm-saathi:demo-mode') !== null
-      const savedProfile = localStorage.getItem('farm-saathi:profile')
-      const profileIsEmpty = !savedProfile || JSON.parse(savedProfile) === null
-      if (!hasDemoModeSetting && profileIsEmpty) {
-        if (key === 'profile' && parsed === null) return initialValue
-        if (['crops', 'expenses', 'tasks'].includes(key) && Array.isArray(parsed) && parsed.length === 0) return initialValue
+      const legacyDemoMode = localStorage.getItem('farm-saathi:demo-mode') === 'true'
+      if (legacyDemoMode && key === 'profile' && parsed?.district === 'Mandya' && parsed?.village === 'Srirangapatna' && parsed?.landSize === 4.8 && parsed?.soil === 'Loamy' && parsed?.irrigation === 'Drip' && parsed?.budget === 85000) return null
+      if (legacyDemoMode && ['crops', 'expenses', 'tasks'].includes(key) && Array.isArray(parsed)) {
+        return parsed.filter((record) => !String(record.id || '').startsWith('demo-'))
       }
+      if (legacyDemoMode && key === 'demo-mode') return false
       return parsed
     } catch (error) {
       console.warn(`Could not read saved ${key} data.`, error)
@@ -89,26 +88,16 @@ function useStoredState(key, initialValue) {
 }
 
 function FarmProvider({ children }) {
-  const [profile, setProfile, profileError] = useStoredState('profile', demoProfile)
-  const [crops, setCrops, cropsError] = useStoredState('crops', demoCrops)
-  const [expenses, setExpenses, expensesError] = useStoredState('expenses', demoExpenses)
-  const [tasks, setTasks, tasksError] = useStoredState('tasks', demoTasks)
+  const [profile, setProfile, profileError] = useStoredState('profile', null)
+  const [crops, setCrops, cropsError] = useStoredState('crops', [])
+  const [expenses, setExpenses, expensesError] = useStoredState('expenses', [])
+  const [tasks, setTasks, tasksError] = useStoredState('tasks', [])
   const [observations, setObservations, observationsError] = useStoredState('observations', [])
-  const [demoMode, setDemoMode, demoModeError] = useStoredState('demo-mode', (() => {
-    try {
-      const existing = localStorage.getItem('farm-saathi:demo-mode')
-      if (existing !== null) return JSON.parse(existing)
-      const savedProfile = localStorage.getItem('farm-saathi:profile')
-      return !savedProfile || JSON.parse(savedProfile) === null
-    } catch (error) {
-      console.warn('Could not determine whether to show project sample data.', error)
-      return true
-    }
-  })())
+  const [, , demoModeError] = useStoredState('demo-mode', false)
   const [language, setLanguage] = useStoredState('language', 'en')
   const [darkMode, setDarkMode] = useStoredState('dark-mode', false)
   const storageError = [profileError, cropsError, expensesError, tasksError, observationsError, demoModeError].find(Boolean) || ''
-  const value = { profile, setProfile, crops, setCrops, expenses, setExpenses, tasks, setTasks, observations, setObservations, demoMode, setDemoMode, language, setLanguage, darkMode, setDarkMode, storageError }
+  const value = { profile, setProfile, crops, setCrops, expenses, setExpenses, tasks, setTasks, observations, setObservations, language, setLanguage, darkMode, setDarkMode, storageError }
   return <FarmContext.Provider value={value}>{children}</FarmContext.Provider>
 }
 
@@ -122,30 +111,8 @@ const sessionNow = Date.now()
 const sessionDate = new Date(sessionNow)
 const money = (amount) => `₹${Number(amount || 0).toLocaleString('en-IN')}`
 const dateToday = () => sessionDate.toISOString().slice(0, 10)
-const dateOffset = (offset) => new Date(sessionNow + offset * 86400000).toISOString().slice(0, 10)
 const daysSince = (date) => Math.max(0, Math.floor((sessionNow - new Date(`${date}T00:00:00`).getTime()) / 86400000))
 const percent = (part, total) => total ? Math.min(100, Math.round((part / total) * 100)) : 0
-const demoProfile = {
-  name: 'Ramesh Gowda', phone: '', email: '', state: 'Karnataka', district: 'Mandya',
-  village: 'Srirangapatna', landSize: 4.8, landUnit: 'acres', soil: 'Loamy',
-  water: 'Moderate', irrigation: 'Drip', budget: 85000, preferredLanguage: 'English',
-}
-const demoCrops = [
-  { id: 'demo-tomato', name: 'Tomato', field: 'North field', area: 1.5, sowingDate: dateOffset(-52), expectedHarvest: dateOffset(28), variety: 'Local hybrid', irrigation: 'Drip', stageIndex: 6, health: 'Not assessed' },
-  { id: 'demo-paddy', name: 'Paddy', field: 'Canal plot', area: 2, sowingDate: dateOffset(-38), expectedHarvest: dateOffset(76), variety: 'Not recorded', irrigation: 'Canal', stageIndex: 5, health: 'Not assessed' },
-  { id: 'demo-chilli', name: 'Chilli', field: 'East field', area: 1.3, sowingDate: dateOffset(-70), expectedHarvest: dateOffset(48), variety: 'Not recorded', irrigation: 'Drip', stageIndex: 7, health: 'Not assessed' },
-]
-const demoExpenses = [
-  { id: 'demo-expense-1', category: 'Seeds', crop: 'Tomato', amount: 4800, date: dateOffset(-16), notes: 'Sample record' },
-  { id: 'demo-expense-2', category: 'Fertilizers', crop: 'Paddy', amount: 7200, date: dateOffset(-8), notes: 'Sample record' },
-  { id: 'demo-expense-3', category: 'Labor', crop: 'Chilli', amount: 5600, date: dateOffset(-3), notes: 'Sample record' },
-]
-const demoTasks = [
-  { id: 'demo-task-1', title: 'Check drip lines in north field', date: dateToday(), type: 'Irrigation', crop: 'Tomato', done: false },
-  { id: 'demo-task-2', title: 'Inspect paddy for water level', date: dateOffset(1), type: 'Inspection', crop: 'Paddy', done: false },
-  { id: 'demo-task-3', title: 'Record chilli crop observations', date: dateOffset(2), type: 'Field work', crop: 'Chilli', done: false },
-  { id: 'demo-task-4', title: 'Review field spending', date: dateOffset(4), type: 'Field work', crop: '', done: false },
-]
 const weatherDescription = (code) => ({
   0: ['Clear', '☀'], 1: ['Mostly clear', '🌤'], 2: ['Partly cloudy', '⛅'], 3: ['Overcast', '☁'],
   45: ['Fog', '🌫'], 48: ['Rime fog', '🌫'], 51: ['Light drizzle', '🌦'], 53: ['Drizzle', '🌦'],
@@ -298,7 +265,7 @@ function FloatingAssistant() {
 }
 
 function Dashboard() {
-  const { profile, crops, expenses, tasks, observations, language, demoMode, setDemoMode, setProfile, setCrops, setExpenses, setTasks, setObservations } = useFarm()
+  const { profile, crops, expenses, tasks, observations, language } = useFarm()
   const navigate = useNavigate()
   const pending = tasks.filter((task) => !task.done).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4)
   const openTasks = tasks.filter((task) => !task.done)
@@ -315,27 +282,8 @@ function Dashboard() {
   })
   const distributionBackground = cropSegments.length ? `conic-gradient(${cropSegments.map((crop) => crop.segment).join(', ')})` : 'conic-gradient(rgba(255,255,255,.13) 0% 100%)'
   const todayLabel = new Intl.DateTimeFormat(language === 'kn' ? 'kn-IN' : 'en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(sessionDate)
-  const resetDemo = () => {
-    if (!window.confirm('Replace all saved farm records in this browser with the sample project data?')) return
-    setProfile(demoProfile)
-    setCrops(demoCrops)
-    setExpenses(demoExpenses)
-    setTasks(demoTasks)
-    setObservations([])
-    setDemoMode(true)
-  }
-  const startWithOwnData = () => {
-    if (!window.confirm('Remove the sample profile, crops, expenses, tasks and notes from this browser? You can then enter your own farm information.')) return
-    setProfile(null)
-    setCrops([])
-    setExpenses([])
-    setTasks([])
-    setObservations([])
-    setDemoMode(false)
-  }
   if (!profile) return <Onboarding />
   return <div className="m-page">
-    {demoMode && <div className="m-demo-banner"><span><b>PROJECT SAMPLE DATA</b><small>Example farm details, crops, tasks and expenses. Not real farmer records.</small></span><Button variant="light" onClick={() => navigate('/profile')}>Edit sample profile</Button><Button variant="light" onClick={resetDemo}>Reset samples</Button><Button variant="light" onClick={startWithOwnData}>Enter my own farm</Button></div>}
     <div className="m-welcome">
       <div className="m-welcome-copy"><span className="m-eyebrow">{todayLabel} · FARM OVERVIEW</span><h1>Welcome back, {profile.name.split(' ')[0]} <span>👋</span></h1><p>Your fields are ready for another day of thoughtful growing.</p><div className="m-welcome-meta"><span>⌖ {profile.village || profile.district}, {profile.state}</span><span>▣ {profile.landSize} {profile.landUnit} registered</span></div><div className="m-welcome-actions"><Button onClick={() => navigate('/crop-growth')}>＋ Add crop record</Button><NavLink className="m-welcome-link" to="/ai-assistant">Ask Farm Assistant ↗</NavLink></div></div>
       <div className="m-welcome-art" aria-hidden="true">
@@ -367,7 +315,7 @@ function Dashboard() {
     </div>
     <div className="m-stat-grid m-dashboard-stats">
       <Card className="m-stat"><span className="m-stat-icon">⌂</span><span>Registered land</span><b>{profile.landSize} <small>{profile.landUnit}</small></b><small className="m-stat-foot">Farm profile record</small></Card>
-      <Card className="m-stat"><span className="m-stat-icon">♧</span><span>Crops growing</span><b>{crops.length}</b><small className="m-stat-foot">{cropArea ? `${cropArea.toLocaleString()} acres recorded` : 'No crop area recorded'}</small></Card>
+      <Card className="m-stat"><span className="m-stat-icon">♧</span><span>Crops registered</span><b>{crops.length}</b><small className="m-stat-foot">{cropArea ? `${cropArea.toLocaleString()} acres recorded` : 'No crop area recorded'}</small></Card>
       <Card className="m-stat"><span className="m-stat-icon">▦</span><span>Open farm tasks</span><b>{openTasks.length}</b><small className="m-stat-foot">{openTasks.length ? `${openTasks.filter((task) => task.date <= dateToday()).length} due today or earlier` : 'No open reminders'}</small></Card>
       <Card className="m-stat"><span className="m-stat-icon">✚</span><span>AI health score</span><b className="m-stat-unavailable">Not assessed</b><small className="m-stat-foot">No verified crop-health score</small></Card>
     </div>
@@ -375,7 +323,7 @@ function Dashboard() {
       <Card className="m-dashboard-health"><div className="m-section-title"><div><span className="m-eyebrow">Field monitoring</span><h2>Field health overview</h2></div><NavLink to="/crop-doctor">Open Crop Doctor ↗</NavLink></div>
         <div className="m-health-empty"><div className="m-health-ring"><span>—</span></div><div><b>Health checks need field observations</b><p>No verified AI crop diagnosis or measured field-health data is available yet. Check a plant photo or record what you observe.</p><NavLink className="m-button primary" to="/crop-doctor">Check a crop photo</NavLink></div></div>
       </Card>
-      <WeatherPeek location={profile.village || profile.district || 'Mandya'} onOpen={() => navigate('/weather')} />
+      <WeatherPeek location={profile.village || profile.district || ''} onOpen={() => navigate('/weather')} />
     </div>
     <div className="m-dashboard-columns m-dashboard-secondary">
       <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm profile</span><h2>Soil health summary</h2></div><NavLink to="/smart-water">Soil Vision →</NavLink></div><div className="m-soil-summary"><span className="m-soil-icon">♧</span><div><b>{profile.soil || 'Soil type not recorded'}</b><small>Farmer-entered profile · not a laboratory measurement</small></div></div><div className="m-soil-summary-grid"><div><small>Water availability</small><b>{profile.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{profile.irrigation || 'Not recorded'}</b></div></div><NavLink className="m-button light" to="/smart-water">Open soil tools</NavLink></Card>
@@ -398,12 +346,12 @@ function Dashboard() {
       </Card>
     </div>
     <div className="m-dashboard-columns">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm finances</span><h2>Expense summary</h2></div><NavLink to="/expenses">See expenses →</NavLink></div><div className="m-finance-total">{money(expenseTotal)}<small>Total recorded farm expenses</small></div><div className="m-inline-stats"><span>{expenses.length} records</span><span>Budget: {profile.budget ? money(profile.budget) : 'Not set'}</span></div><div className="m-dashboard-expense-bars">{categories.map((category) => { const amount = expenses.filter((item) => item.category === category).reduce((sum, item) => sum + Number(item.amount || 0), 0); return amount ? <div key={category}><span>{category}</span><div className="m-progress"><span style={{ width: `${percent(amount, expenseTotal)}%` }} /></div><b>{money(amount)}</b></div> : null })}</div></Card>
-      <WeatherPeek location={profile.village || profile.district || 'Mandya'} onOpen={() => navigate('/weather')} />
+      <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm finances</span><h2>Expense summary</h2></div><NavLink to="/expenses">See expenses →</NavLink></div>{expenses.length ? <><div className="m-finance-total">{money(expenseTotal)}<small>Total recorded farm expenses</small></div><div className="m-inline-stats"><span>{expenses.length} records</span><span>Budget: {profile.budget != null ? money(profile.budget) : 'Not recorded'}</span></div><div className="m-dashboard-expense-bars">{categories.map((category) => { const amount = expenses.filter((item) => item.category === category).reduce((sum, item) => sum + Number(item.amount || 0), 0); return amount ? <div key={category}><span>{category}</span><div className="m-progress"><span style={{ width: `${percent(amount, expenseTotal)}%` }} /></div><b>{money(amount)}</b></div> : null })}</div></> : <EmptyState title="No expenses recorded" detail="Add a record when you make a farm purchase; no spending is assumed." action={<Button variant="light" onClick={() => navigate('/expenses')}>Record an expense</Button>} />}</Card>
+      <WeatherPeek location={profile.village || profile.district || ''} onOpen={() => navigate('/weather')} />
     </div>
     <div className="m-dashboard-columns">
       <Card><div className="m-section-title"><div><span className="m-eyebrow">Market information</span><h2>Mandi price highlights</h2></div><NavLink to="/market-price">Open source →</NavLink></div><div className="m-not-connected"><span>₹</span><p><b>Live prices not connected</b><small>We do not show sample rates as today's prices. Check Agmarknet for verified market reports.</small></p><a href="https://agmarknet.gov.in/" target="_blank" rel="noreferrer">Agmarknet ↗</a></div></Card>
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Planning guidance</span><h2>Today on your farm</h2></div><NavLink to="/crop-analyzer">Plan a crop →</NavLink></div><p>Crop suggestions are planning estimates, not guarantees. Compare options using your soil, water availability, land size and budget.</p><NavLink className="m-button light" to="/crop-analyzer">View crop recommendations</NavLink><div className="m-dashboard-alert"><b>Health status is not assessed</b><small>Sample crop cards do not represent verified crop-health diagnostics. Add your own observations in Crop Growth.</small><NavLink to="/crop-doctor">Record a concern →</NavLink></div></Card>
+      <Card><div className="m-section-title"><div><span className="m-eyebrow">Planning guidance</span><h2>Plan with verified local information</h2></div><NavLink to="/crop-analyzer">Open crop planning →</NavLink></div><p>No ranked crop predictions or yield estimates are shown without a verified local source.</p><div className="m-dashboard-alert"><b>Crop health is not assessed</b><small>No diagnosis or measured field-health data is available. Record observations or submit a crop photo when the trained model is ready.</small><NavLink to="/crop-doctor">Open Crop Doctor →</NavLink></div></Card>
     </div>
   </div>
 }
@@ -416,6 +364,11 @@ function WeatherPeek({ location, onOpen }) {
     if (showLoading) {
       setStatus('loading')
       setError('')
+    }
+    if (!location.trim()) {
+      setError('Add your village or district in your profile before loading local weather.')
+      setStatus('error')
+      return
     }
     try {
       const locationResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`, { signal })
@@ -465,12 +418,12 @@ function ProfilePage() {
 function ProfileForm({ isNew = false }) {
   const { profile, setProfile, language } = useFarm()
   const navigate = useNavigate()
-  const [form, setForm] = useState(profile || { name: '', phone: '', email: '', state: 'Karnataka', district: '', village: '', landSize: '', landUnit: 'acres', soil: '', water: 'Moderate', irrigation: 'Not specified', budget: '', preferredLanguage: 'English' })
+  const [form, setForm] = useState(profile || { name: '', phone: '', email: '', state: '', district: '', village: '', landSize: '', landUnit: 'acres', soil: '', water: 'Not known', irrigation: 'Not specified', budget: '', preferredLanguage: 'English' })
   const change = (key) => (event) => setForm((previous) => ({ ...previous, [key]: event.target.value }))
   const submit = (event) => {
     event.preventDefault()
     if (!form.name.trim() || !form.state.trim() || !form.landSize || Number(form.landSize) <= 0) return
-    setProfile({ ...form, name: form.name.trim(), landSize: Number(form.landSize), budget: Number(form.budget || 0) })
+    setProfile({ ...form, name: form.name.trim(), landSize: Number(form.landSize), budget: String(form.budget ?? '').trim() ? Number(form.budget) : null })
     if (isNew) navigate('/')
   }
   return <Card className="m-form-card"><form onSubmit={submit} className="m-form">
@@ -486,50 +439,25 @@ function ProfileForm({ isNew = false }) {
     <label>Water availability<select value={form.water} onChange={change('water')}><option>Reliable</option><option>Moderate</option><option>Limited</option><option>Rain-fed</option><option>Not known</option></select></label>
     <label>Irrigation method<select value={form.irrigation} onChange={change('irrigation')}><option>Not specified</option><option>Drip</option><option>Sprinkler</option><option>Flood</option><option>Rain-fed</option></select></label>
     <label>Preferred language<select value={form.preferredLanguage} onChange={change('preferredLanguage')}><option>English</option><option>Kannada</option></select></label>
-    <div className="m-form-footer"><p>Local demo: profile data stays in browser storage. Secure account login is not connected.</p><Button type="submit">{t('Save profile', language)}</Button></div>
+    <div className="m-form-footer"><p>Farm profile and crop records are stored in this browser; they are not synced to an account.</p><Button type="submit">{t('Save profile', language)}</Button></div>
   </form></Card>
 }
 
 function MyFarmPage() {
   const { profile, crops } = useFarm()
   return <div className="m-page"><Heading eyebrow="My farm" title="Your land at a glance" detail="Edit your registered location, soil, water and land details in your profile." action={<NavLink className="m-button primary" to="/profile">Edit farm details</NavLink>} />
-    <div className="m-stat-grid"><Stat label="Farm area" value={`${profile?.landSize || 0} ${profile?.landUnit || 'acres'}`} /><Stat label="Soil information" value={profile?.soil || 'Not provided'} /><Stat label="Water availability" value={profile?.water || 'Not provided'} /><Stat label="Irrigation" value={profile?.irrigation || 'Not specified'} /></div>
+    <div className="m-stat-grid"><Stat label="Farm area" value={profile?.landSize ? `${profile.landSize} ${profile.landUnit}` : 'Not recorded'} /><Stat label="Soil information" value={profile?.soil || 'Not provided'} /><Stat label="Water availability" value={profile?.water || 'Not provided'} /><Stat label="Irrigation" value={profile?.irrigation || 'Not specified'} /></div>
     <Card><div className="m-section-title"><h2>Registered crops and fields</h2><NavLink to="/crop-growth">Add crop →</NavLink></div>{crops.length ? <div className="m-crop-list">{crops.map((crop) => <CropSummary key={crop.id} crop={crop} />)}</div> : <EmptyState title="No fields added" detail="Register a crop to begin a field record." />}</Card>
   </div>
 }
 
 function CropPlanner() {
   const { profile } = useFarm()
-  const [form, setForm] = useState({ season: 'Kharif', water: profile?.water || 'Moderate', soil: profile?.soil || '', category: 'Any crop', budget: profile?.budget || '' })
-  const [compared, setCompared] = useState([])
-  const recommendations = useMemo(() => {
-    const catalog = [
-      { name: 'Sorghum', soil: ['Black soil', 'Red soil', 'Loamy'], water: 'Low', duration: '90–120 days', cost: 17000, yield: '1.0–1.5 t/acre', need: 'Low to moderate', reason: 'Often considered for relatively dry conditions; confirm local variety and season.' },
-      { name: 'Groundnut', soil: ['Sandy', 'Red soil', 'Loamy'], water: 'Moderate', duration: '100–130 days', cost: 22000, yield: '0.7–1.1 t/acre', need: 'Moderate', reason: 'Sandy or well-drained soil may suit groundnut; avoid waterlogging.' },
-      { name: 'Maize', soil: ['Loamy', 'Black soil'], water: 'Moderate', duration: '90–120 days', cost: 26000, yield: '1.5–2.5 t/acre', need: 'Moderate to high', reason: 'Consider where drainage and water supply are adequate.' },
-      { name: 'Paddy', soil: ['Clay', 'Loamy'], water: 'High', duration: '110–150 days', cost: 38000, yield: '1.5–2.5 t/acre', need: 'High', reason: 'Requires reliable water and a locally suitable planting window.' },
-      { name: 'Green gram', soil: ['Sandy', 'Red soil', 'Loamy'], water: 'Low', duration: '60–75 days', cost: 14000, yield: '0.3–0.6 t/acre', need: 'Low', reason: 'Short duration option; verify seasonal suitability with local agriculture services.' },
-    ]
-    return catalog.map((crop) => {
-      let score = 55
-      if (form.soil && crop.soil.includes(form.soil)) score += 20
-      if (form.water === 'Limited' || form.water === 'Rain-fed') score += crop.water === 'Low' ? 16 : crop.water === 'Moderate' ? 5 : -18
-      if (form.water === 'Reliable') score += crop.water === 'High' ? 12 : 4
-      if (form.budget && Number(form.budget) < crop.cost * Number(profile?.landSize || 1)) score -= 20
-      if (form.season === 'Rabi' && ['Sorghum', 'Green gram'].includes(crop.name)) score += 4
-      return { ...crop, score: Math.max(20, Math.min(95, score)), totalCost: Math.round(crop.cost * Number(profile?.landSize || 1)) }
-    }).sort((a, b) => b.score - a.score)
-  }, [form, profile])
-  const toggle = (name) => setCompared((previous) => previous.includes(name) ? previous.filter((item) => item !== name) : previous.length < 3 ? [...previous, name] : previous)
-  return <div className="m-page"><Heading eyebrow="Crop planning" title="Explore crop options" detail="A transparent rule-of-thumb shortlist using your soil, water, land and budget. Estimates are not guarantees; check with your local agriculture office before investing." />
-    <Card><div className="m-form m-planner-form">
-      <label>Soil type<select value={form.soil} onChange={(e) => setForm({ ...form, soil: e.target.value })}><option value="">Unknown</option><option>Loamy</option><option>Clay</option><option>Sandy</option><option>Black soil</option><option>Red soil</option></select></label>
-      <label>Water availability<select value={form.water} onChange={(e) => setForm({ ...form, water: e.target.value })}><option>Reliable</option><option>Moderate</option><option>Limited</option><option>Rain-fed</option><option>Not known</option></select></label>
-      <label>Season<select value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })}><option>Kharif</option><option>Rabi</option><option>Summer</option></select></label>
-      <label>Budget (₹)<input type="number" min="0" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} /></label>
-    </div></Card>
-    <div className="m-recommend-grid">{recommendations.map((crop) => <Card key={crop.name}><div className="m-crop-card-head"><span className="m-crop-icon">♧</span><span className="m-score">{crop.score}/100 heuristic</span></div><h2>{crop.name}</h2><p>{crop.reason}</p><div className="m-estimate-label">PLANNING ESTIMATES · VERIFY LOCALLY</div><dl className="m-details"><div><dt>Duration</dt><dd>{crop.duration}</dd></div><div><dt>Water</dt><dd>{crop.need}</dd></div><div><dt>Cost for {profile?.landSize || 0} {profile?.landUnit || 'acres'}</dt><dd>{money(crop.totalCost)}</dd></div><div><dt>Indicative yield / acre</dt><dd>{crop.yield}</dd></div></dl><label className="m-compare"><input type="checkbox" checked={compared.includes(crop.name)} onChange={() => toggle(crop.name)} /> Add to compare (up to 3)</label></Card>)}</div>
-    {compared.length > 1 && <Card><h2>Compare options</h2><div className="m-compare-table">{recommendations.filter((crop) => compared.includes(crop.name)).map((crop) => <div key={crop.name}><b>{crop.name}</b><span>Cost: {money(crop.totalCost)}</span><span>Water: {crop.need}</span><span>Duration: {crop.duration}</span><span>Yield estimate: {crop.yield}</span></div>)}</div></Card>}
+  return <div className="m-page"><Heading eyebrow="Crop planning" title="Plan with verified local information" detail="No official crop-suitability dataset or local yield/cost feed is connected, so this page does not invent rankings, scores, yields, or budgets." />
+    <Card><div className="m-section-title"><div><span className="m-eyebrow">Farmer-entered information</span><h2>Your recorded field conditions</h2></div><NavLink to="/profile">Update farm profile →</NavLink></div>
+      <div className="m-soil-summary-grid"><div><small>Soil type</small><b>{profile?.soil || 'Not recorded'}</b></div><div><small>Water availability</small><b>{profile?.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{profile?.irrigation || 'Not recorded'}</b></div><div><small>Farm area</small><b>{profile ? `${profile.landSize} ${profile.landUnit}` : 'Not recorded'}</b></div></div>
+    </Card>
+    <Card><h2>Check local recommendations before planting</h2><p>Crop suitability also depends on season, local variety, soil-test results, drainage, water supply, and current agricultural guidance. Ask your local Krishi Vigyan Kendra or agriculture officer before investing.</p><div className="m-learning-resources"><div><a href="https://icar.gov.in/" target="_blank" rel="noreferrer">Indian Council of Agricultural Research ↗</a><a href="https://soilhealth.dac.gov.in/" target="_blank" rel="noreferrer">Soil Health Card portal ↗</a><small>Official information links; these are not connected data feeds or personalized recommendations.</small></div></div></Card>
   </div>
 }
 
@@ -567,7 +495,7 @@ function CropSummary({ crop }) {
 
 function WeatherPage() {
   const { profile } = useFarm()
-  const [location, setLocation] = useState(profile?.village || profile?.district || 'Mandya')
+  const [location, setLocation] = useState(profile?.village || profile?.district || '')
   const [weather, setWeather] = useState(null)
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState('')
@@ -638,7 +566,7 @@ function ExpensesPage() {
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); link.download = 'farm-saathi-expenses.csv'; link.click(); URL.revokeObjectURL(link.href)
   }
   return <div className="m-page"><Heading eyebrow="Expense tracker" title="Know where your money goes" detail="Record actual spending and download your records anytime." action={<Button variant="light" onClick={exportCsv} disabled={!visible.length}>Export CSV</Button>} />
-    <div className="m-stat-grid"><Stat label="Total in period" value={money(total)} /><Stat label="Records" value={visible.length} /><label className="m-filter">Show<select value={period} onChange={(e) => setPeriod(e.target.value)}><option value="all">All time</option><option value="week">Last 7 days</option><option value="month">Last 30 days</option></select></label></div>
+    <div className="m-stat-grid"><Stat label="Total in period" value={visible.length ? money(total) : 'No records'} /><Stat label="Records" value={visible.length} /><label className="m-filter">Show<select value={period} onChange={(e) => setPeriod(e.target.value)}><option value="all">All time</option><option value="week">Last 7 days</option><option value="month">Last 30 days</option></select></label></div>
     <Card><h2>{editing ? 'Edit expense' : 'Add expense'}</h2><form className="m-form m-expense-form" onSubmit={submit}><label>Category<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label><label>Crop (optional)<select value={form.crop} onChange={(e) => setForm({ ...form, crop: e.target.value })}><option value="">Not linked</option>{crops.map((crop) => <option key={crop.id}>{crop.name}</option>)}</select></label><label>Date<input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></label><label>Amount (₹)<input type="number" min="0.01" step="0.01" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label><label className="m-wide-field">Notes<input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label><div className="m-form-footer">{message && <span role="status">{message}</span>}<Button type="submit">{editing ? 'Save changes' : t('Add expense', language)}</Button>{editing && <Button variant="light" type="button" onClick={() => { setEditing(null); setForm({ category: 'Seeds', crop: '', date: dateToday(), amount: '', notes: '' }) }}>Cancel</Button>}</div></form></Card>
     {categoryTotals.length > 0 && <Card><h2>Category breakdown</h2><div className="m-breakdown">{categoryTotals.map((item) => <div key={item.category}><span>{item.category}</span><div className="m-progress"><span style={{ width: `${percent(item.amount, total)}%` }} /></div><b>{money(item.amount)}</b></div>)}</div></Card>}
     <Card><h2>Expense records</h2>{visible.length ? <div className="m-table">{visible.map((item) => <div className="m-expense-row" key={item.id}><div><b>{item.category}</b><small>{item.date} · {item.crop || 'Unlinked crop'}{item.notes ? ` · ${item.notes}` : ''}</small></div><strong>{money(item.amount)}</strong><button type="button" onClick={() => edit(item)}>Edit</button><button type="button" className="m-delete" onClick={() => setExpenses((all) => all.filter((entry) => entry.id !== item.id))}>Delete</button></div>)}</div> : <EmptyState title="No expenses in this period" detail="Add a record above when you make a farm purchase." />}</Card>
@@ -648,8 +576,10 @@ function ExpensesPage() {
 function BudgetPage() {
   const { profile, expenses, crops } = useFarm()
   const spent = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-  const budget = Number(profile?.budget || 0)
-  return <div className="m-page"><Heading eyebrow="Budget" title="Season spending overview" detail="This summary uses your registered budget and expense records; it does not forecast crop profit." /><div className="m-stat-grid"><Stat label="Budget recorded" value={money(budget)} /><Stat label="Expenses recorded" value={money(spent)} /><Stat label="Budget remaining" value={money(Math.max(0, budget - spent))} /></div><Card><h2>Budget progress</h2><div className="m-progress"><span style={{ width: `${percent(spent, budget)}%` }} /></div><p className="m-muted">{budget ? `${percent(spent, budget)}% of recorded budget spent` : 'Add a budget in your profile to view progress.'}</p><p>{crops.length} crop records · {expenses.length} expense records</p></Card></div>
+  const budgetRecorded = profile?.budget != null
+  const budget = budgetRecorded ? Number(profile.budget) : 0
+  const canCalculateRemaining = budgetRecorded && expenses.length > 0
+  return <div className="m-page"><Heading eyebrow="Budget" title="Season spending overview" detail="This summary uses your registered budget and recorded expenses; it does not forecast crop profit." /><div className="m-stat-grid"><Stat label="Budget recorded" value={budgetRecorded ? money(budget) : 'Not recorded'} /><Stat label="Expenses recorded" value={expenses.length ? money(spent) : 'No records'} /><Stat label="Budget remaining" value={canCalculateRemaining ? money(Math.max(0, budget - spent)) : 'Not available'} /></div><Card><h2>Budget progress</h2><div className="m-progress"><span style={{ width: `${budgetRecorded && expenses.length ? percent(spent, budget) : 0}%` }} /></div><p className="m-muted">{!budgetRecorded ? 'Add a budget in your profile to view progress.' : !expenses.length ? 'Add expense records before calculating a remaining budget.' : `${percent(spent, budget)}% of recorded budget spent`}</p><p>{crops.length} crop records · {expenses.length} expense records</p></Card></div>
 }
 
 function DiseasePage() {
@@ -876,7 +806,7 @@ function DiagnosisReport({ diagnosis, imageUrl, imageError, onClose }) {
 }
 
 function SoilWaterPage() {
-  const { profile, crops } = useFarm()
+  const { profile, crops } = useFarmData()
   const token = localStorage.getItem(CHAT_TOKEN_KEY) || ''
   const [soilStatus, setSoilStatus] = useState({ model_loaded: false, message: 'Checking soil model…' })
   const [soilAnalyses, setSoilAnalyses] = useState([])
@@ -891,6 +821,18 @@ function SoilWaterPage() {
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState('')
   const [historyError, setHistoryError] = useState('')
+  const [showMeasurements, setShowMeasurements] = useState(false)
+  const [measurements, setMeasurements] = useState({
+    ph: '',
+    nitrogen: '',
+    phosphorus: '',
+    potassium: '',
+    electricalConductivity: '',
+    organicCarbon: '',
+    soilMoisture: '',
+    soilTemperature: '',
+    measurementSource: 'farmer_entered',
+  })
 
   const refreshSoilHistory = useCallback(async (signal) => {
     if (!token) return
@@ -898,7 +840,7 @@ function SoilWaterPage() {
       const response = await fetch('/api/soil/history', { headers: { Authorization: `Bearer ${token}` }, signal })
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error || `Could not load soil history (${response.status}).`)
-      setSoilAnalyses(body.analyses)
+      setSoilAnalyses(body.analyses || [])
       setHistoryError('')
     } catch (requestError) {
       if (!signal?.aborted) setHistoryError(requestError.message || 'Could not load soil history.')
@@ -941,13 +883,19 @@ function SoilWaterPage() {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type)) {
       setFile(null)
       setPreviewUrl('')
-      setError('Choose a JPG, PNG, or WEBP soil image.')
+      setError('Choose a valid JPG, PNG, or WEBP soil image.')
       return
     }
     if (selectedFile.size > 5 * 1024 * 1024) {
       setFile(null)
       setPreviewUrl('')
       setError('Choose an image smaller than 5 MB.')
+      return
+    }
+    if (selectedFile.size === 0) {
+      setFile(null)
+      setPreviewUrl('')
+      setError('Selected image file is empty (0 bytes).')
       return
     }
     setFile(selectedFile)
@@ -958,12 +906,19 @@ function SoilWaterPage() {
 
   const submitSoilImage = async (event) => {
     event.preventDefault()
-    if (!file) return setError('Take or choose a soil photograph first.')
+    if (!file) return setError('Take a photo or choose a soil image first.')
     setLoading(true)
     setProgress(0)
     setError('')
     try {
-      const result = await uploadSoilImage({ token, file, cropName, location, onProgress: setProgress })
+      const result = await uploadSoilImage({
+        token,
+        file,
+        cropName,
+        location,
+        measurements: showMeasurements ? measurements : {},
+        onProgress: setProgress,
+      })
       setAnalysis(result)
       updateAnalysisImage('')
       setFile(null)
@@ -1015,53 +970,578 @@ function SoilWaterPage() {
     }
   }
 
-  return <div className="m-page"><Heading eyebrow="Soil Vision & water" title="Understand your soil with measured data" detail="Soil Vision provides a visual model match only. A laboratory soil test is needed for fertility and crop-specific nutrient advice." />
-    <Card>
-      <div className="m-section-title"><div><span className="m-eyebrow">Separate soil image model</span><h2>Scan a soil photograph</h2></div><span className={`m-doctor-severity ${soilStatus.model_loaded ? 'low' : 'unknown'}`}>{soilStatus.model_loaded ? `Ready · ${soilStatus.model_name || 'MobileNetV2'}` : 'Model unavailable'}</span></div>
-      {!soilStatus.model_loaded && <p className="m-error" role="status">{soilStatus.message || 'Install the trained soil model in ai-service/models/soil/.'}</p>}
-      <form className="m-doctor-form" onSubmit={submitSoilImage}>
-        <div className="m-doctor-upload">
-          {previewUrl ? <img src={previewUrl} alt="Preview of the soil image selected for analysis" /> : <div className="m-doctor-placeholder"><span>♧</span><b>Photograph bare soil in natural, even light</b><small>Use JPG, PNG, or WEBP under 5 MB. Remove plants, pots, and other objects from the frame.</small></div>}
-          <div className="m-doctor-upload-actions">
-            <label className="m-button primary">Take a photo<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { chooseSoilImage(event.target.files?.[0]); event.target.value = '' }} /></label>
-            <label className="m-button light">Upload image<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { chooseSoilImage(event.target.files?.[0]); event.target.value = '' }} /></label>
-            {file && <><span className="m-muted">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</span><button className="m-delete" type="button" onClick={() => { setFile(null); setPreviewUrl(''); setProgress(0) }}>Remove image</button></>}
+  const printReport = () => {
+    window.print()
+  }
+
+  return (
+    <div className="m-page">
+      <Heading
+        eyebrow="AI Soil Vision Analyzer"
+        title="Comprehensive Soil Health & Crop Advisory"
+        detail="Capture or upload a soil photograph to receive genuine AI visual classification, practical soil improvement strategies, and crop suitability guidance. Scientific testing separates visual matching from laboratory measurements."
+      />
+
+      {/* Model Readiness Card */}
+      <Card>
+        <div className="m-section-title">
+          <div>
+            <span className="m-eyebrow">MobileNetV2 Soil Classifier</span>
+            <h2>Analyze Soil Photograph</h2>
           </div>
+          <span className={`m-doctor-severity ${soilStatus.model_loaded ? 'low' : 'high'}`}>
+            {soilStatus.model_loaded
+              ? `Ready · ${soilStatus.model_name || 'MobileNetV2'} (${soilStatus.class_count || 7} Classes)`
+              : 'Model Unavailable'}
+          </span>
         </div>
-        <div className="m-form m-planner-form">
-          <label>Crop (optional)<select value={cropName} onChange={(event) => setCropName(event.target.value)}><option value="">Not selected</option>{crops.map((crop) => <option key={crop.id} value={crop.name}>{crop.name}{crop.field ? ` · ${crop.field}` : ''}</option>)}</select></label>
-          <label>Village or district (optional)<input maxLength="120" value={location} onChange={(event) => setLocation(event.target.value)} placeholder="e.g. Mandya" /></label>
+
+        {!soilStatus.model_loaded && (
+          <p className="m-error" role="status">
+            {soilStatus.message || 'Trained soil model not loaded. Check ai-service/models/soil/.'}
+          </p>
+        )}
+
+        <form className="m-doctor-form" onSubmit={submitSoilImage}>
+          <div className="m-doctor-upload">
+            {previewUrl ? (
+              <img src={previewUrl} alt="Selected soil sample preview" />
+            ) : (
+              <div className="m-doctor-placeholder">
+                <span>🌱</span>
+                <b>Capture or upload a clear soil photograph</b>
+                <small>Use JPG, PNG, or WEBP under 5 MB. Ensure natural lighting and bare soil without heavy plant cover.</small>
+              </div>
+            )}
+            <div className="m-doctor-upload-actions">
+              <label className="m-button primary">
+                📷 Take a photo
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  onChange={(event) => { chooseSoilImage(event.target.files?.[0]); event.target.value = '' }}
+                />
+              </label>
+              <label className="m-button light">
+                📁 Upload from gallery
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(event) => { chooseSoilImage(event.target.files?.[0]); event.target.value = '' }}
+                />
+              </label>
+              {file && (
+                <>
+                  <span className="m-muted">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                  <button
+                    className="m-delete"
+                    type="button"
+                    onClick={() => { setFile(null); setPreviewUrl(''); setProgress(0) }}
+                  >
+                    Remove image
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="m-form m-planner-form">
+            <label>
+              Target crop (optional)
+              <select value={cropName} onChange={(event) => setCropName(event.target.value)}>
+                <option value="">Not selected</option>
+                {crops.map((crop) => (
+                  <option key={crop.id} value={crop.name}>
+                    {crop.name}{crop.field ? ` · ${crop.field}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Village / District location (optional)
+              <input
+                maxLength="120"
+                value={location}
+                onChange={(event) => setLocation(event.target.value)}
+                placeholder="e.g. Mandya, Karnataka"
+              />
+            </label>
+          </div>
+
+          {/* Optional Scientific Soil Measurements */}
+          <button
+            type="button"
+            className="m-soil-optional-toggle"
+            onClick={() => setShowMeasurements(!showMeasurements)}
+          >
+            <span>🧪 Scientific Soil Test & Sensor Measurements (Optional)</span>
+            <span>{showMeasurements ? '▲ Hide' : '▼ Add Lab / Sensor Data'}</span>
+          </button>
+
+          {showMeasurements && (
+            <div className="m-soil-card-section" style={{ marginBottom: '16px' }}>
+              <p className="m-muted" style={{ fontSize: '0.85rem', margin: '0 0 12px' }}>
+                If you have an official Soil Health Card or local sensor reading, enter them here. These are saved and presented separately from AI visual predictions.
+              </p>
+              <div className="m-form m-planner-form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+                <label>
+                  Data Source
+                  <select
+                    value={measurements.measurementSource}
+                    onChange={(e) => setMeasurements({ ...measurements, measurementSource: e.target.value })}
+                  >
+                    <option value="farmer_entered">Farmer-entered</option>
+                    <option value="laboratory_report">Laboratory Report</option>
+                    <option value="sensor">Field Sensor</option>
+                  </select>
+                </label>
+                <label>
+                  Soil pH (0 - 14)
+                  <input
+                    placeholder="e.g. 6.8"
+                    value={measurements.ph}
+                    onChange={(e) => setMeasurements({ ...measurements, ph: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Nitrogen (N, kg/ha)
+                  <input
+                    placeholder="e.g. 240"
+                    value={measurements.nitrogen}
+                    onChange={(e) => setMeasurements({ ...measurements, nitrogen: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Phosphorus (P, kg/ha)
+                  <input
+                    placeholder="e.g. 18"
+                    value={measurements.phosphorus}
+                    onChange={(e) => setMeasurements({ ...measurements, phosphorus: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Potassium (K, kg/ha)
+                  <input
+                    placeholder="e.g. 280"
+                    value={measurements.potassium}
+                    onChange={(e) => setMeasurements({ ...measurements, potassium: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Electrical Cond. (dS/m)
+                  <input
+                    placeholder="e.g. 0.45"
+                    value={measurements.electricalConductivity}
+                    onChange={(e) => setMeasurements({ ...measurements, electricalConductivity: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Organic Carbon (%)
+                  <input
+                    placeholder="e.g. 0.55"
+                    value={measurements.organicCarbon}
+                    onChange={(e) => setMeasurements({ ...measurements, organicCarbon: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Soil Moisture (%)
+                  <input
+                    placeholder="e.g. 22"
+                    value={measurements.soilMoisture}
+                    onChange={(e) => setMeasurements({ ...measurements, soilMoisture: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Soil Temperature (°C)
+                  <input
+                    placeholder="e.g. 26"
+                    value={measurements.soilTemperature}
+                    onChange={(e) => setMeasurements({ ...measurements, soilTemperature: e.target.value })}
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {loading && (
+            <div className="m-doctor-progress" role="status">
+              <div>
+                <b>{progress < 100 ? 'Uploading soil photograph…' : 'Analyzing with MobileNetV2 soil vision model…'}</b>
+                <span>{progress}%</span>
+              </div>
+              <progress max="100" value={progress} />
+              <small>Processing image through FARM-SATHI AI inference engine.</small>
+            </div>
+          )}
+
+          {error && <p className="m-error" role="alert">{error}</p>}
+
+          <Button type="submit" disabled={!file || loading || !soilStatus.model_loaded}>
+            {loading ? 'Analyzing…' : '🔍 Analyze Soil Sample'}
+          </Button>
+        </form>
+      </Card>
+
+      {/* DETAILED SOIL ANALYSIS REPORT */}
+      {analysis && (
+        <Card className="m-doctor-report">
+          <div className="m-soil-report-header">
+            <div>
+              <span className="m-eyebrow">
+                AI Soil Analysis Report · {analysis.createdAt ? new Date(analysis.createdAt).toLocaleString() : 'Just now'}
+              </span>
+              <h2>{analysis.predicted_class || 'Inconclusive Visual Result'}</h2>
+              <div className="m-soil-badge-bar">
+                <span className={`m-doctor-severity ${analysis.status === 'possible_detection' ? 'low' : 'unknown'}`}>
+                  {analysis.status === 'possible_detection' ? 'Confidently Identified' : 'Inconclusive Match'}
+                </span>
+                <span className="m-soil-badge">
+                  Score: <b>{(analysis.confidence * 100).toFixed(1)}%</b>
+                </span>
+                <span className="m-soil-badge">
+                  Model: {analysis.model_name || 'MobileNetV2'} v{analysis.model_version || '1.0.0'}
+                </span>
+                {analysis.cropName && <span className="m-soil-badge">Crop: {analysis.cropName}</span>}
+                {analysis.location && <span className="m-soil-badge">📍 {analysis.location}</span>}
+              </div>
+            </div>
+            <div className="m-soil-actions">
+              <button type="button" className="m-button light" onClick={printReport}>
+                🖨️ Print / Save PDF
+              </button>
+              <button
+                type="button"
+                className="m-plain-action"
+                onClick={() => { setAnalysis(null); updateAnalysisImage('') }}
+              >
+                ✕ Close
+              </button>
+            </div>
+          </div>
+
+          <div className="m-doctor-report-main">
+            {analysisImage ? (
+              <img src={analysisImage} alt="Analyzed soil specimen" />
+            ) : (
+              <span className="m-doctor-image-placeholder">
+                {analysis.id ? 'Loading saved soil photograph…' : 'Soil photograph preview'}
+              </span>
+            )}
+            <div>
+              <h3>AI Identification Summary</h3>
+              <p>{analysis.message}</p>
+              {analysis.scientific_testing_note && (
+                <p className="m-muted" style={{ fontSize: '0.85rem', lineHeight: '1.45' }}>
+                  ℹ️ {analysis.scientific_testing_note}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Model Probability Breakdown */}
+          {analysis.probabilities && (
+            <section style={{ margin: '16px 0' }}>
+              <h3>Model Confidence Across Soil Categories</h3>
+              <div className="m-soil-probabilities">
+                {Object.entries(analysis.probabilities)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([label, probability]) => (
+                    <div key={label}>
+                      <span>{label}</span>
+                      <b>{(probability * 100).toFixed(1)}%</b>
+                      <progress max="1" value={probability} />
+                    </div>
+                  ))}
+              </div>
+            </section>
+          )}
+
+          {/* Detailed Report Sections */}
+          <div className="m-soil-report-grid">
+            {/* Section B: Soil Characteristics */}
+            <div className="m-soil-card-section">
+              <h3>🔬 Visual Characteristics</h3>
+              {analysis.soil_characteristics ? (
+                <ul className="m-soil-kv-list">
+                  <li><strong>Texture:</strong> <span>{analysis.soil_characteristics.texture}</span></li>
+                  <li><strong>Color:</strong> <span>{analysis.soil_characteristics.color}</span></li>
+                  <li><strong>Visible Surface Indicators:</strong> <span>{analysis.soil_characteristics.visible_indicators}</span></li>
+                  <li><strong>Stones / Gravel:</strong> <span>{analysis.soil_characteristics.stones_gravel}</span></li>
+                  <li><strong>Moisture Appearance:</strong> <span>{analysis.soil_characteristics.moisture_appearance}</span></li>
+                  <li><strong>Drainage Behavior:</strong> <span>{analysis.soil_characteristics.drainage}</span></li>
+                </ul>
+              ) : (
+                <ul className="m-bullets">
+                  {analysis.visual_characteristics?.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              )}
+              <p className="m-muted" style={{ fontSize: '0.8rem', marginTop: '10px' }}>
+                * A photograph alone cannot determine exact pH, NPK, EC, or organic carbon.
+              </p>
+            </div>
+
+            {/* Section C: Soil Health Assessment */}
+            <div className="m-soil-card-section">
+              <h3>🩺 Soil Health Assessment</h3>
+              {analysis.soil_health ? (
+                <>
+                  <p style={{ margin: '0 0 6px', fontWeight: '700', fontSize: '0.9rem', color: '#246739' }}>Observed Strengths:</p>
+                  <ul className="m-bullets" style={{ marginBottom: '12px' }}>
+                    {analysis.soil_health.strengths?.map((s, i) => <li key={i}>{s}</li>)}
+                  </ul>
+                  <p style={{ margin: '0 0 6px', fontWeight: '700', fontSize: '0.9rem', color: '#962e25' }}>Inherent Limitations:</p>
+                  <ul className="m-bullets" style={{ marginBottom: '12px' }}>
+                    {analysis.soil_health.limitations?.map((l, i) => <li key={i}>{l}</li>)}
+                  </ul>
+                  <p style={{ margin: '0 0 6px', fontWeight: '700', fontSize: '0.9rem', color: '#79550a' }}>Agricultural Concerns:</p>
+                  <ul className="m-bullets">
+                    {analysis.soil_health.concerns?.map((c, i) => <li key={i}>{c}</li>)}
+                  </ul>
+                </>
+              ) : (
+                <p className="m-muted">Visual assessment pending certified laboratory confirmation.</p>
+              )}
+            </div>
+
+            {/* Section D: Soil Improvement Recommendations */}
+            <div className="m-soil-card-section">
+              <h3>🌾 Practical Improvement Actions</h3>
+              {analysis.recommendations?.length > 0 ? (
+                <ul className="m-bullets">
+                  {analysis.recommendations.map((rec, i) => (
+                    <li key={i}>{rec}</li>
+                  ))}
+                </ul>
+              ) : (
+                <ul className="m-bullets">
+                  <li>Incorporate 10-12 tonnes/ha of well-decomposed FYM or vermicompost.</li>
+                  <li>Practice green manuring with Sesbania (Dhaincha) or Sunnhemp.</li>
+                  <li>Adopt drip irrigation or contour mulching to prevent moisture evaporation.</li>
+                </ul>
+              )}
+            </div>
+
+            {/* Section E: Crop Suitability */}
+            <div className="m-soil-card-section">
+              <h3>🌱 Crop Suitability</h3>
+              {analysis.crop_suitability ? (
+                <>
+                  <p style={{ margin: '0 0 6px', fontWeight: '700', fontSize: '0.9rem' }}>Primary Suitable Crops:</p>
+                  <div className="m-soil-chips">
+                    {analysis.crop_suitability.primary_crops?.map((c) => (
+                      <span key={c} className="m-soil-chip">{c}</span>
+                    ))}
+                  </div>
+                  {analysis.crop_suitability.pulses_oilseeds?.length > 0 && (
+                    <>
+                      <p style={{ margin: '10px 0 6px', fontWeight: '700', fontSize: '0.9rem' }}>Pulses & Oilseeds:</p>
+                      <div className="m-soil-chips">
+                        {analysis.crop_suitability.pulses_oilseeds.map((p) => (
+                          <span key={p} className="m-soil-chip">{p}</span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {analysis.crop_suitability.prerequisites && (
+                    <p className="m-muted" style={{ fontSize: '0.82rem', marginTop: '10px' }}>
+                      <strong>Prerequisites:</strong> {analysis.crop_suitability.prerequisites}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="m-muted">Final crop selection requires checking local rainfall and lab test results.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Section F: Measured Laboratory & Sensor Data */}
+          {analysis.measurements && Object.values(analysis.measurements).some(Boolean) && (
+            <div className="m-soil-card-section" style={{ margin: '16px 0' }}>
+              <h3>🧪 Scientific Soil Measurements Recorded</h3>
+              <p className="m-muted" style={{ fontSize: '0.82rem', margin: '0 0 10px' }}>
+                Source: <strong>{analysis.measurements.measurementSource?.replace('_', ' ').toUpperCase()}</strong> · Verified against soil laboratory testing.
+              </p>
+              <div className="m-soil-measurements-grid">
+                {analysis.measurements.ph && (
+                  <div className="m-soil-measurement-item">
+                    <small>pH Reaction</small>
+                    <b>{analysis.measurements.ph}</b>
+                  </div>
+                )}
+                {analysis.measurements.nitrogen && (
+                  <div className="m-soil-measurement-item">
+                    <small>Available N</small>
+                    <b>{analysis.measurements.nitrogen} kg/ha</b>
+                  </div>
+                )}
+                {analysis.measurements.phosphorus && (
+                  <div className="m-soil-measurement-item">
+                    <small>Available P</small>
+                    <b>{analysis.measurements.phosphorus} kg/ha</b>
+                  </div>
+                )}
+                {analysis.measurements.potassium && (
+                  <div className="m-soil-measurement-item">
+                    <small>Available K</small>
+                    <b>{analysis.measurements.potassium} kg/ha</b>
+                  </div>
+                )}
+                {analysis.measurements.electricalConductivity && (
+                  <div className="m-soil-measurement-item">
+                    <small>Electrical Cond.</small>
+                    <b>{analysis.measurements.electricalConductivity} dS/m</b>
+                  </div>
+                )}
+                {analysis.measurements.organicCarbon && (
+                  <div className="m-soil-measurement-item">
+                    <small>Organic Carbon</small>
+                    <b>{analysis.measurements.organicCarbon}%</b>
+                  </div>
+                )}
+                {analysis.measurements.soilMoisture && (
+                  <div className="m-soil-measurement-item">
+                    <small>Soil Moisture</small>
+                    <b>{analysis.measurements.soilMoisture}%</b>
+                  </div>
+                )}
+                {analysis.measurements.soilTemperature && (
+                  <div className="m-soil-measurement-item">
+                    <small>Soil Temp</small>
+                    <b>{analysis.measurements.soilTemperature}°C</b>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Fertilizer Management Guidance */}
+          <div className="m-soil-card-section" style={{ margin: '16px 0' }}>
+            <h3>💊 Fertilizer Advisory & Soil Testing Principles</h3>
+            <ul className="m-bullets">
+              {analysis.fertilizer_guidance?.map((f, i) => (
+                <li key={i}>{f}</li>
+              )) || (
+                <li>Never apply exact fertilizer doses from a photo; obtain a certified laboratory Soil Health Card.</li>
+              )}
+            </ul>
+            <p className="m-warning" style={{ marginTop: '12px' }}>
+              ⚠️ An image cannot measure exact chemical fertility. Do not purchase or broadcast fertilizers without verified laboratory testing from a certified Krishi Vigyan Kendra (KVK) or government laboratory.
+            </p>
+          </div>
+
+          {/* Limitations */}
+          {analysis.limitations?.length > 0 && (
+            <section style={{ margin: '16px 0' }}>
+              <h3>Important Model & Scientific Limitations</h3>
+              <ul className="m-bullets">
+                {analysis.limitations.map((lim, i) => (
+                  <li key={i}>{lim}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </Card>
+      )}
+
+      {/* ANALYSIS HISTORY CARD */}
+      <Card>
+        <div className="m-section-title">
+          <div>
+            <span className="m-eyebrow">{token ? 'Private to your account' : 'Optional account feature'}</span>
+            <h2>Saved Soil Analysis History</h2>
+          </div>
+          {token && (
+            <button className="m-plain-action" type="button" onClick={() => refreshSoilHistory()}>
+              🔄 Refresh
+            </button>
+          )}
         </div>
-        {loading && <div className="m-doctor-progress" role="status"><div><b>{progress < 100 ? 'Uploading soil photograph…' : 'Analyzing with the soil image model…'}</b><span>{progress}% uploaded</span></div><progress max="100" value={progress} /><small>The image is sent to the local Farm Saathi AI service.</small></div>}
-        {error && <p className="m-error" role="alert">{error}</p>}
-        <Button type="submit" disabled={!file || loading || !soilStatus.model_loaded}>{loading ? 'Analyzing…' : 'Analyze soil image'}</Button>
-      </form>
-    </Card>
-    {analysis && <Card className="m-doctor-report">
-      <div className="m-section-title"><div><span className="m-eyebrow">AI visual classification · {analysis.createdAt ? new Date(analysis.createdAt).toLocaleString() : 'just now'}</span><h2>Soil image result</h2></div><button type="button" className="m-plain-action" onClick={() => { setAnalysis(null); updateAnalysisImage('') }}>Close result</button></div>
-      <div className="m-doctor-report-main">{analysisImage ? <img src={analysisImage} alt="Analyzed soil sample" /> : <span className="m-doctor-image-placeholder">{analysis.id ? 'Loading saved soil photograph…' : 'Soil photograph preview'}</span>}
-        <div><span className={`m-doctor-severity ${analysis.status === 'possible_detection' ? 'moderate' : 'unknown'}`}>{analysis.status?.replaceAll('_', ' ')}</span><h3>{analysis.predicted_class || 'No confident class match'}</h3><p>Model score: <b>{(analysis.confidence * 100).toFixed(1)}%</b></p><small>{analysis.model_name || 'MobileNetV2'} · model {analysis.model_version || 'version not supplied'}</small><p>{analysis.message}</p>{analysis.cropName && <small>Crop selected: {analysis.cropName} · </small>}{analysis.location && <small>Location provided: {analysis.location}</small>}</div>
+
+        {!token ? (
+          <p className="m-muted">
+            Guest analyses are shown on this page and are not saved permanently. Register or log in to keep a permanent soil analysis history.
+          </p>
+        ) : historyError ? (
+          <p className="m-error" role="alert">{historyError}</p>
+        ) : null}
+
+        {token && soilAnalyses.length > 0 && (
+          <div className="m-doctor-history">
+            {soilAnalyses.map((record) => (
+              <article key={record.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '12px 0' }}>
+                <img
+                  src={record.imageUrl}
+                  alt={record.predicted_class || 'Soil thumbnail'}
+                  className="m-soil-history-thumb"
+                  onError={(e) => { e.target.style.display = 'none' }}
+                />
+                <div style={{ flex: 1 }}>
+                  <span className={`m-doctor-severity ${record.status === 'possible_detection' ? 'low' : 'unknown'}`}>
+                    {record.status?.replaceAll('_', ' ')}
+                  </span>
+                  <b>{record.predicted_class || 'Inconclusive Result'}</b>
+                  <small>
+                    {new Date(record.createdAt).toLocaleString()} · Model score: {(record.confidence * 100).toFixed(1)}%
+                    {record.cropName ? ` · Crop: ${record.cropName}` : ''}
+                    {record.location ? ` · 📍 ${record.location}` : ''}
+                  </small>
+                </div>
+                <button type="button" onClick={() => openSoilRecord(record)}>
+                  View Report
+                </button>
+                <button type="button" className="m-delete" onClick={() => deleteSoilRecord(record)}>
+                  Delete
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+
+        {token && !soilAnalyses.length && !historyError && (
+          <EmptyState
+            title="No soil analyses saved yet"
+            detail="Your actual soil classification reports and laboratory measurements will be archived here after an image analysis."
+          />
+        )}
+      </Card>
+
+      {/* Practical next steps card */}
+      <div className="m-stat-grid">
+        <Stat label="Known soil type" value={profile?.soil || 'Not provided'} />
+        <Stat label="Water availability" value={profile?.water || 'Not provided'} />
+        <Stat label="Irrigation" value={profile?.irrigation || 'Not specified'} />
       </div>
-      {analysis.probabilities && <section><h3>Model class scores</h3><div className="m-soil-probabilities">{Object.entries(analysis.probabilities).sort((a, b) => b[1] - a[1]).map(([label, probability]) => <div key={label}><span>{label}</span><b>{(probability * 100).toFixed(1)}%</b><progress max="1" value={probability} /></div>)}</div></section>}
-      {analysis.visual_characteristics?.length > 0 && <section><h3>Image observations</h3><ul>{analysis.visual_characteristics.map((item) => <li key={item}>{item}</li>)}</ul></section>}
-      <section><h3>What to do next for {analysis.cropName || 'your crop'}</h3><ul className="m-bullets"><li>Treat this class as a visual clue, not a soil-type or crop-suitability determination.</li><li>Submit a representative sample to a recognized soil-testing laboratory or Soil Health Card service for pH, NPK, organic carbon, and electrical conductivity.</li><li>Use verified test results and local KVK or agriculture-department advice before changing fertilizer, irrigation, or crop plans.</li></ul></section>
-      {analysis.limitations?.length > 0 && <section><h3>Important limitations</h3><ul>{analysis.limitations.map((item) => <li key={item}>{item}</li>)}</ul></section>}
-      <p className="m-warning">An image cannot measure pH, NPK, salinity, electrical conductivity, organic carbon, or actual soil moisture. Do not apply fertilizer or choose a crop based on this classification alone.</p>
-    </Card>}
-    <Card>
-      <div className="m-section-title"><div><span className="m-eyebrow">{token ? 'Private to your account' : 'Optional account feature'}</span><h2>Soil analysis history</h2></div>{token && <button className="m-plain-action" type="button" onClick={() => refreshSoilHistory()}>Refresh</button>}</div>
-      {!token ? <p className="m-muted">Guest analyses are shown on this page and are not saved after you leave.</p> : historyError && <p className="m-error" role="alert">{historyError}</p>}
-      {token && soilAnalyses.length > 0 && <div className="m-doctor-history">{soilAnalyses.map((record) => <article key={record.id}><span className={`m-doctor-severity ${record.status === 'possible_detection' ? 'moderate' : 'unknown'}`}>{record.status?.replaceAll('_', ' ')}</span><div><b>{record.predicted_class || 'Inconclusive visual result'}</b><small>{new Date(record.createdAt).toLocaleString()} · model score {(record.confidence * 100).toFixed(1)}%{record.cropName ? ` · ${record.cropName}` : ''}</small></div><button type="button" onClick={() => openSoilRecord(record)}>View</button><button type="button" className="m-delete" onClick={() => deleteSoilRecord(record)}>Delete</button></article>)}</div>}
-      {token && !soilAnalyses.length && !historyError && <EmptyState title="No soil analyses saved" detail="Your actual model results will appear here after an image analysis." />}
-    </Card>
-    <div className="m-stat-grid"><Stat label="Known soil type" value={profile?.soil || 'Not provided'} /><Stat label="Water availability" value={profile?.water || 'Not provided'} /><Stat label="Irrigation" value={profile?.irrigation || 'Not specified'} /></div>
-    <Card><h2>Practical next steps</h2><ul className="m-bullets"><li>Use a soil test from a recognized lab to guide nutrient decisions.</li><li>Check soil moisture in the root zone before irrigating; recent rainfall may change needs.</li><li>Keep dates and amounts of irrigation and fertilizer in your crop record.</li><li>Ask a local agriculture officer for crop- and soil-specific rates.</li></ul><NavLink className="m-button light" to="/crop-growth">Open crop records</NavLink></Card>
-    {crops.length > 0 && <Card><h2>Your active crop context</h2>{crops.map((crop) => <CropSummary key={crop.id} crop={crop} />)}</Card>}
-  </div>
+
+      <Card>
+        <h2>Practical Next Steps for Farm Soil Management</h2>
+        <ul className="m-bullets">
+          <li>Submit a representative composite soil sample (0-15 cm depth) to an authorized soil testing lab.</li>
+          <li>Refer to the official Soil Health Card for customized NPK and micronutrient dosage.</li>
+          <li>Check root-zone moisture before irrigating to optimize water usage.</li>
+          <li>Consult local agriculture extension officers before modifying crop rotation cycles.</li>
+        </ul>
+        <NavLink className="m-button light" to="/crop-growth">
+          Open Crop Records
+        </NavLink>
+      </Card>
+
+      {crops.length > 0 && (
+        <Card>
+          <h2>Your Active Crop Context</h2>
+          {crops.map((crop) => (
+            <CropSummary key={crop.id} crop={crop} />
+          ))}
+        </Card>
+      )}
+    </div>
+  )
 }
 
 function MarketPage() {
-  return <div className="m-page"><Heading eyebrow="Mandi prices" title="Find verified market prices" detail="No government market-data API is configured, so sample or stale prices are not displayed." /><Card className="m-live-unavailable"><span className="m-status-dot"></span><div><h2>Live price feed not connected</h2><p>Use the official Agmarknet portal to search reported commodity prices by state, district and market. Always check the market's date and unit before selling.</p><a className="m-button primary" href="https://agmarknet.gov.in/" target="_blank" rel="noreferrer">Open Agmarknet ↗</a></div></Card><Card><h2>Why no prices appear here</h2><p>Government data access requires a configured and validated data source. This demo does not invent min, max or modal prices, price history, or a “best mandi” result.</p><p className="m-muted">Source: Directorate of Marketing & Inspection, Government of India · Verify freshness on the official portal.</p></Card></div>
+  return <div className="m-page"><Heading eyebrow="Mandi prices" title="Find verified market prices" detail="No government market-data API is configured, so sample or stale prices are not displayed." /><Card className="m-live-unavailable"><span className="m-status-dot"></span><div><h2>Live price feed not connected</h2><p>Use the official Agmarknet portal to search reported commodity prices by state, district and market. Always check the market's date and unit before selling.</p><a className="m-button primary" href="https://agmarknet.gov.in/" target="_blank" rel="noreferrer">Open Agmarknet ↗</a></div></Card><Card><h2>Why no prices appear here</h2><p>Government data access requires a configured and validated source. This app does not invent min, max or modal prices, price history, or a “best mandi” result.</p><p className="m-muted">Source: Directorate of Marketing & Inspection, Government of India · Verify freshness on the official portal.</p></Card></div>
 }
 
 const schemes = [
@@ -1144,7 +1624,7 @@ function uploadCropImage({ token, file, cropName, observations, onProgress }) {
   })
 }
 
-function uploadSoilImage({ token, file, cropName, location, onProgress }) {
+function uploadSoilImage({ token, file, cropName, location, measurements = {}, onProgress }) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest()
     request.open('POST', token ? '/api/soil/analyze' : '/api/soil/preview')
@@ -1171,6 +1651,15 @@ function uploadSoilImage({ token, file, cropName, location, onProgress }) {
     form.set('image', file, file.name)
     if (cropName) form.set('cropName', cropName)
     if (location) form.set('location', location)
+    if (measurements.ph) form.set('ph', measurements.ph)
+    if (measurements.nitrogen) form.set('nitrogen', measurements.nitrogen)
+    if (measurements.phosphorus) form.set('phosphorus', measurements.phosphorus)
+    if (measurements.potassium) form.set('potassium', measurements.potassium)
+    if (measurements.electricalConductivity) form.set('electricalConductivity', measurements.electricalConductivity)
+    if (measurements.organicCarbon) form.set('organicCarbon', measurements.organicCarbon)
+    if (measurements.soilMoisture) form.set('soilMoisture', measurements.soilMoisture)
+    if (measurements.soilTemperature) form.set('soilTemperature', measurements.soilTemperature)
+    if (measurements.measurementSource) form.set('measurementSource', measurements.measurementSource)
     request.send(form)
   })
 }
@@ -1277,7 +1766,7 @@ function MarkdownContent({ content }) {
 }
 
 function AssistantPage({ voiceFirst = false }) {
-  const { profile, crops, tasks, expenses, observations, language, demoMode } = useFarm()
+  const { profile, crops, tasks, expenses, observations, language } = useFarm()
   const location = useLocation()
   const navigate = useNavigate()
   const [token, setToken] = useState(() => localStorage.getItem(CHAT_TOKEN_KEY) || '')
@@ -1321,12 +1810,12 @@ function AssistantPage({ voiceFirst = false }) {
     fertilizerAndIrrigationHistory: expenses.filter((item) => /fertiliz|irrigat/i.test(item.category)).slice(0, 15),
     plannedAndCompletedActivities: tasks.slice(0, 15),
     recordedExpenses: expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0),
-    farmRecordSource: demoMode ? 'project sample data; do not present as this farmer’s actual records' : 'farmer-entered browser records',
+    farmRecordSource: 'farmer-entered browser records; not synced to an account',
     accountName: signedIn ? user.name : null,
     ...(signedIn && savedAnalysisToken === token ? savedAnalysisContext : { recentCropDiagnoses: [], recentSoilAnalyses: [] }),
     weather: 'Not supplied unless fetched for this request. Do not infer current weather.',
     marketPrices: 'Not supplied. Do not invent current prices.',
-  }), [profile, crops, observations, expenses, tasks, signedIn, user?.name, savedAnalysisContext, savedAnalysisToken, token, demoMode])
+  }), [profile, crops, observations, expenses, tasks, signedIn, user?.name, savedAnalysisContext, savedAnalysisToken, token])
   const activeConversation = conversationList.find((item) => item.id === conversationId)
   const messages = signedIn ? activeConversation?.messages || EMPTY_CHAT_MESSAGES : guestMessages
   const suggestions = [

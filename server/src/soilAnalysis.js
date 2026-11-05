@@ -14,10 +14,21 @@ const allowedTypes = new Map([
   ['image/png', { extension: 'png', matches: (buffer) => buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) }],
   ['image/webp', { extension: 'webp', matches: (buffer) => buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP' }],
 ])
+
 const analysisFields = z.object({
   cropName: z.string().trim().max(80).default(''),
   location: z.string().trim().max(120).default(''),
+  ph: z.string().trim().max(30).optional().default(''),
+  nitrogen: z.string().trim().max(30).optional().default(''),
+  phosphorus: z.string().trim().max(30).optional().default(''),
+  potassium: z.string().trim().max(30).optional().default(''),
+  electricalConductivity: z.string().trim().max(30).optional().default(''),
+  organicCarbon: z.string().trim().max(30).optional().default(''),
+  soilMoisture: z.string().trim().max(30).optional().default(''),
+  soilTemperature: z.string().trim().max(30).optional().default(''),
+  measurementSource: z.enum(['ai_visual', 'farmer_entered', 'sensor', 'laboratory_report']).default('farmer_entered'),
 })
+
 const probabilitySchema = z.record(z.string().min(1), z.number().min(0).max(1))
 const predictionSchema = z.object({
   success: z.literal(true),
@@ -36,7 +47,8 @@ const predictionSchema = z.object({
     confidence: z.number().min(0).max(1),
   })),
   visual_characteristics: z.array(z.string().max(300)).max(10),
-})
+}).passthrough()
+
 const statusSchema = z.object({
   model_loaded: z.boolean(),
   model_name: z.string(),
@@ -50,7 +62,7 @@ fs.mkdirSync(imageDirectory, { recursive: true })
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_IMAGE_BYTES, files: 1, fields: 2, fieldSize: 512 },
+  limits: { fileSize: MAX_IMAGE_BYTES, files: 1, fields: 20, fieldSize: 512 },
   fileFilter: (_req, file, callback) => {
     if (!allowedTypes.has(file.mimetype)) return callback(new Error('Choose a JPG, PNG, or WEBP soil image.'))
     return callback(null, true)
@@ -103,7 +115,7 @@ function validateInput(req) {
   }
   const fields = analysisFields.safeParse(req.body)
   if (!fields.success) {
-    const error = new Error('Crop name or location is too long.')
+    const error = new Error('Invalid input fields provided.')
     error.status = 400
     throw error
   }
@@ -111,13 +123,14 @@ function validateInput(req) {
 }
 
 function formatAnalysis(row) {
+  const resultJson = JSON.parse(row.result_json)
   return {
     id: row.id,
     cropName: row.crop_name,
     location: row.location,
     imageUrl: `/api/soil/history/${row.id}/image`,
     createdAt: row.created_at,
-    ...JSON.parse(row.result_json),
+    ...resultJson,
   }
 }
 
@@ -147,13 +160,29 @@ export async function analyzeSoil(req, res, next) {
     }
     const prediction = predictionSchema.safeParse(serviceBody)
     if (!prediction.success) {
-      console.error('TensorFlow service returned an invalid soil prediction response.')
+      console.error('TensorFlow service returned an invalid soil prediction response.', prediction.error)
       const error = new Error('Soil analysis returned an invalid response. Please retry.')
       error.status = 502
       throw error
     }
 
-    const result = prediction.data
+    const measurements = {
+      ph: input.ph || null,
+      nitrogen: input.nitrogen || null,
+      phosphorus: input.phosphorus || null,
+      potassium: input.potassium || null,
+      electricalConductivity: input.electricalConductivity || null,
+      organicCarbon: input.organicCarbon || null,
+      soilMoisture: input.soilMoisture || null,
+      soilTemperature: input.soilTemperature || null,
+      measurementSource: input.measurementSource || 'farmer_entered',
+    }
+
+    const result = {
+      ...prediction.data,
+      measurements,
+    }
+
     if (!req.user) {
       return res.json({
         analysis: {

@@ -106,6 +106,13 @@ function geminiErrorStatus(error) {
   return match ? Number(match[1]) : undefined
 }
 
+function dailyQuotaMessage(error) {
+  const message = String(error?.message || '')
+  if (!/limit:\s*\d+\s*requests per day|daily.*limit/i.test(message)) return ''
+  const retryTime = message.match(/retry in ([\dA-Za-z]+)/i)?.[1]
+  return `Gemini's daily API limit has been reached.${retryTime ? ` Try again in ${retryTime}` : ''} or enable more quota for your key in Google AI Studio.`
+}
+
 export function normalizeGeminiError(error) {
   const status = geminiErrorStatus(error)
   if (error?.name === 'TimeoutError' || error?.name === 'AbortError' || [408, 504].includes(status)) {
@@ -114,6 +121,17 @@ export function normalizeGeminiError(error) {
     return timeout
   }
   if (error?.message?.includes('Gemini is not configured')) return error
+  const dailyQuota = dailyQuotaMessage(error)
+  if (dailyQuota) {
+    const exhausted = new Error(dailyQuota)
+    exhausted.status = 429
+    return exhausted
+  }
+  if (/check your API quota/i.test(error?.message || '')) {
+    const incomplete = new Error(error.message)
+    incomplete.status = 503
+    return incomplete
+  }
   if (status === 404) {
     const unavailable = new Error('The configured Gemini model is unavailable. Set GEMINI_MODEL to a model available to your API key in server/.env, then restart the backend.')
     unavailable.status = 503
@@ -135,6 +153,7 @@ export function normalizeGeminiError(error) {
 }
 
 function isRetryableGeminiError(error) {
+  if (dailyQuotaMessage(error)) return false
   return [429, 503].includes(geminiErrorStatus(error))
 }
 
@@ -164,11 +183,32 @@ export async function retryGeminiCall(operation) {
 export async function* retryGeminiStream(operation) {
   for (let attempt = 0; ; attempt += 1) {
     let emitted = false
+    let interactionStream = false
+    let completed = false
     try {
       const response = await operation()
       for await (const chunk of response) {
+        if (typeof chunk?.event_type === 'string') interactionStream = true
+        if (chunk?.event_type === 'error') {
+          const error = new Error(chunk.error?.message || 'Gemini interaction failed.')
+          if (chunk.error?.code) error.code = chunk.error.code
+          throw error
+        }
+        if (chunk?.event_type === 'interaction.completed') {
+          if (chunk.interaction?.status !== 'completed') {
+            const error = new Error(chunk.interaction?.errors?.map((item) => item.message).filter(Boolean).join(' ') || 'Gemini could not complete this answer. Check your API quota and try again.')
+            error.status = chunk.interaction?.status === 'incomplete' ? 503 : 502
+            throw error
+          }
+          completed = true
+        }
         if (streamChunkText(chunk)) emitted = true
         yield chunk
+      }
+      if (interactionStream && !completed) {
+        const error = new Error('Gemini ended the chat before completing its response. Check your API quota and try again.')
+        error.status = 503
+        throw error
       }
       return
     } catch (error) {
@@ -189,6 +229,11 @@ export async function generateReply({ history, message, context }) {
     generation_config: { max_output_tokens: 1024, temperature: 0.3 },
     store: false,
   }))
+  if (response.status !== 'completed') {
+    const error = new Error(response.errors?.map((item) => item.message).filter(Boolean).join(' ') || 'Gemini did not complete this answer. Check your API quota and try again.')
+    error.status = response.status === 'incomplete' ? 503 : 502
+    throw normalizeGeminiError(error)
+  }
   const text = response.output_text?.trim()
   if (!text) {
     const error = new Error('Gemini returned an empty answer. Please try again.')
@@ -291,12 +336,7 @@ export async function* generateReplyStream({ history, message, context }) {
     stream: true,
     store: false,
   }))) {
-    if (chunk.event_type === 'error') {
-      const error = new Error(chunk.error?.message || 'Gemini interaction failed.')
-      if (chunk.error?.code) error.code = chunk.error.code
-      throw error
-    }
-    const text = chunk.event_type === 'step.delta' && chunk.delta.type === 'text' ? chunk.delta.text : ''
+    const text = streamChunkText(chunk)
     if (text) {
       emitted = true
       yield text
