@@ -9,10 +9,10 @@ Use Node.js 20.19+ or 22.12+ and npm. From the project root:
 ```sh
 npm install
 npm install --prefix server
-npm run dev:all
+npm run dev
 ```
 
-The web app is at `http://localhost:5173`; the API is at `http://localhost:5000`. Copy `server/.env.example` to the ignored `server/.env`; add a secure `JWT_SECRET` and a Gemini key if you want farming chat. Crop Doctor requires a separately trained PlantVillage model and the local FastAPI service; see [MODEL_TRAINING.md](./MODEL_TRAINING.md).
+`npm run dev` starts both the Express API and web app so account registration, sign-in, chat, and private Crop Doctor history can connect. Open the Vite URL printed in the terminal (normally `http://localhost:5173`). Copy `server/.env.example` to the ignored `server/.env`; add a secure `JWT_SECRET` and a Gemini key if you want farming chat. Accounts work without a Gemini key. Crop Doctor image analysis requires a separately trained PlantVillage model and the local FastAPI service; see [MODEL_TRAINING.md](./MODEL_TRAINING.md).
 
 ## Features
 

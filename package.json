@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:all": "concurrently \"npm run server:dev\" \"npm run dev\"",
+    "dev": "concurrently \"npm run server:dev\" \"npm run web:dev\"",
+    "dev:all": "npm run dev",
+    "web:dev": "vite",
     "server:dev": "npm --prefix server run dev",
     "server:start": "npm --prefix server start",
     "build": "vite build",
