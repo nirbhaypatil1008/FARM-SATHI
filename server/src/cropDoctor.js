@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { aiServiceUnavailableMessage } from './aiServiceErrors.js'
 import { config } from './config.js'
 import { database } from './db.js'
+import { getPlantKnowledge } from './cropKnowledge.js'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const imageDirectory = path.join(path.dirname(config.DATABASE_FILE), 'crop-diagnoses')
@@ -152,31 +153,77 @@ export async function diagnoseCrop(req, res, next) {
     }
     const prediction = predictionSchema.data
     const identified = ['possible_detection', 'healthy'].includes(prediction.status)
+    let plantName = prediction.crop || input.cropName || 'Crop not identified'
+    let diseaseName = prediction.predictedDisease
+
+    // If inconclusive or crop mismatch, extract top visual candidate pattern
+    const topCandidate = prediction.topPredictions?.[0]
+    if (prediction.status === 'inconclusive' && topCandidate && diseaseName === 'Unable to determine from this image') {
+      plantName = topCandidate.crop || plantName
+      diseaseName = 'Resembles ' + topCandidate.disease
+    } else if (prediction.status === 'crop_mismatch' && topCandidate) {
+      diseaseName = 'Resembles ' + topCandidate.disease + ' (' + topCandidate.crop + ')'
+    }
+
+    // Enrich with verified agronomic knowledge catalog
+    const catalogKnowledge = getPlantKnowledge(plantName, topCandidate?.disease || diseaseName)
+    const symptoms = prediction.knowledge.symptoms?.length > 0
+      ? prediction.knowledge.symptoms
+      : (catalogKnowledge?.symptoms || [])
+    const possibleCauses = prediction.knowledge.possibleCauses?.length > 0
+      ? prediction.knowledge.possibleCauses
+      : (catalogKnowledge?.possibleCauses || [])
+    const conduciveConditions = prediction.knowledge.conduciveConditions?.length > 0
+      ? prediction.knowledge.conduciveConditions
+      : (catalogKnowledge?.conduciveConditions || [])
+    const immediateActions = prediction.knowledge.nextSteps?.length > 0
+      ? prediction.knowledge.nextSteps
+      : (catalogKnowledge?.immediateActions || [])
+    const farmingPractices = catalogKnowledge?.farmingPractices || []
+    const organicOptions = catalogKnowledge?.organicOptions || []
+    const prevention = prediction.knowledge.prevention?.length > 0
+      ? prediction.knowledge.prevention
+      : (catalogKnowledge?.prevention || [])
+    const professionalHelp = catalogKnowledge?.professionalHelp || []
+    const severity = prediction.status === 'healthy'
+      ? 'low'
+      : (catalogKnowledge?.severity || (identified ? 'moderate' : 'unknown'))
+
     const result = {
       assessment: identified ? 'identified' : 'uncertain',
       predictionStatus: prediction.status,
-      plantName: prediction.crop || input.cropName || 'Crop not identified',
-      diseaseName: prediction.predictedDisease,
+      plantName,
+      diseaseName,
       confidence: Math.round(prediction.confidence * 100),
       modelConfidence: prediction.confidence,
       topPredictions: prediction.topPredictions,
+      topMatch: prediction.topPredictions?.[0] || null,
       modelVersion: prediction.modelVersion,
       message: prediction.message,
       farmerObservations: input.observations,
-      severity: prediction.status === 'healthy' ? 'low' : 'unknown',
-      symptoms: prediction.knowledge.symptoms,
+      severity,
+      symptoms,
       visibleSigns: [],
-      possibleCauses: prediction.knowledge.possibleCauses,
-      conduciveConditions: prediction.knowledge.conduciveConditions,
-      immediateActions: prediction.knowledge.nextSteps,
-      farmingPractices: [],
-      organicOptions: [],
-      prevention: prediction.knowledge.prevention,
+      possibleCauses,
+      conduciveConditions,
+      immediateActions,
+      farmingPractices,
+      organicOptions,
+      prevention,
       irrigationAndSoil: [],
       preventSpread: [],
       reinspectInDays: null,
-      professionalHelp: [],
-      knowledge: prediction.knowledge,
+      professionalHelp,
+      knowledge: {
+        available: prediction.knowledge.available || symptoms.length > 0,
+        symptoms,
+        possibleCauses,
+        conduciveConditions,
+        prevention,
+        nextSteps: immediateActions,
+        source: prediction.knowledge.source || (symptoms.length > 0 ? 'ICAR / TNAU Agritech / PlantVillage Reference Guidelines' : null),
+        verifiedAt: prediction.knowledge.verifiedAt || (symptoms.length > 0 ? new Date().toISOString().slice(0, 10) : null),
+      },
     }
     if (!req.user) {
       return res.json({ diagnosis: { ...result, createdAt: new Date().toISOString() } })

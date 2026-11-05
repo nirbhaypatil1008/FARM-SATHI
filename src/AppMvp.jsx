@@ -14,6 +14,8 @@ const navItems = [
 
 const stages = ['Land preparation', 'Seed selection', 'Sowing', 'Germination', 'Seedling', 'Vegetative growth', 'Flowering', 'Fruiting', 'Maturity', 'Harvesting']
 const categories = ['Seeds', 'Fertilizers', 'Pesticides', 'Labor', 'Irrigation', 'Equipment', 'Transportation', 'Machinery rental', 'Other']
+const HERO_VIDEO_URL = '/farm-field-hero.mp4'
+const HERO_POSTER_URL = '/farm-field-hero-poster.jpg'
 const learningTopics = [
   { match: /soil|fertility|compost|nutrient|ph|organic matter/, name: 'Soil health', source: 'Soil Health Card portal', url: 'https://soilhealth.dac.gov.in/', video: 'ICAR India soil health fertility farmers', images: 'soil health farming India field examples' },
   { match: /irrigat|water|drip|watering|drought/, name: 'Water and irrigation', source: 'Pradhan Mantri Krishi Sinchayee Yojana', url: 'https://pmksy.gov.in/', video: 'ICAR India efficient irrigation farmers', images: 'drip irrigation farming India field examples' },
@@ -160,13 +162,22 @@ function Button({ children, variant = 'primary', ...props }) {
 }
 
 function Layout() {
-  const { profile, language, setLanguage, darkMode, setDarkMode, storageError } = useFarm()
+  const { profile, language, setLanguage, darkMode, setDarkMode, storageError, token, user, logout } = useFarm()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  const isAuthRoute = location.pathname === '/register' || location.pathname === '/login'
+
+  // If unauthenticated or explicitly on register/login, render dedicated AuthPage at beginning
+  if (!token || isAuthRoute) {
+    return <AuthPage initialMode={location.pathname === '/login' ? 'login' : 'register'} />
+  }
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [search, setSearch] = useState('')
   const loc = profile?.village || profile?.district || 'Add your location'
-  const displayName = profile?.name || 'Farmer'
+  const displayName = user?.name || profile?.name || 'Farmer'
   const initials = displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
   const openSearchResult = (event) => {
     event.preventDefault()
@@ -192,15 +203,17 @@ function Layout() {
         <form className="m-global-search" role="search" onSubmit={openSearchResult}><span aria-hidden="true">⌕</span><input aria-label="Search Farm Saathi pages" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search farm tools…" /><button type="submit">Search</button></form>
         <span className="m-location">⌖ {loc}</span>
         <div className="m-top-actions">
-          <label className="m-language"><span className="sr-only">Language</span><select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="en">English</option><option value="kn">ಕನ್ನಡ</option></select></label>
+          <label className="m-language"><span className="sr-only">Language</span><select value={language} onChange={(event) => setLanguage(event.target.value)}>{SUPPORTED_LANGUAGES.map((lang) => <option key={lang.code} value={lang.code}>{lang.native} ({lang.label})</option>)}</select></label>
           <NavLink className="m-notification-button" to="/notifications" aria-label="Farm alerts">♢</NavLink>
           <NavLink className="m-quick-action" to="/crop-growth">＋ Add crop</NavLink>
           <button className="m-theme" type="button" onClick={() => setDarkMode(!darkMode)} aria-label={darkMode ? 'Switch to day mode' : 'Switch to night mode'} title={darkMode ? 'Switch to day mode' : 'Switch to night mode'}>{darkMode ? '☀' : '☾'}<span>{darkMode ? 'Day' : 'Night'}</span></button>
-          <details className="m-profile-menu"><summary className="m-profile-chip"><span className="m-avatar">{initials}</span><span className="m-profile-name">{displayName}</span><span aria-hidden="true">⌄</span></summary><div className="m-profile-dropdown"><b>{displayName}</b><small>{loc}</small><NavLink to="/profile">Profile & farm settings</NavLink></div></details>
+          <details className="m-profile-menu"><summary className="m-profile-chip"><span className="m-avatar">{initials}</span><span className="m-profile-name">{displayName}</span><span aria-hidden="true">⌄</span></summary><div className="m-profile-dropdown"><b>{displayName}</b><small>{loc}</small><NavLink to="/profile">{t('Profile & farm settings', language)}</NavLink><button type="button" className="m-plain-action" style={{ color: '#ef4444', marginTop: '8px', textAlign: 'left', cursor: 'pointer', padding: '6px 0', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }} onClick={() => { logout(); navigate('/register') }}>🚪 {t('Sign Out', language)}</button></div></details>
         </div>
       </header>
       {storageError && <div className="m-storage-error" role="alert">{storageError}</div>}
       <div className="m-content"><Routes>
+        <Route path="/register" element={<AuthPage initialMode="register" />} />
+        <Route path="/login" element={<AuthPage initialMode="login" />} />
         <Route path="/" element={<Dashboard />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/my-farm" element={<MyFarmPage />} />
@@ -267,6 +280,53 @@ function FloatingAssistant() {
 function Dashboard() {
   const { profile, crops, expenses, tasks, observations, language } = useFarm()
   const navigate = useNavigate()
+  const videoRef = useRef(null)
+  const [heroVideoFailed, setHeroVideoFailed] = useState(false)
+  const [videoPlaying, setVideoPlaying] = useState(true)
+  const [isMuted, setIsMuted] = useState(true)
+  const [videoProgress, setVideoProgress] = useState(0)
+  const [pixelMode, setPixelMode] = useState('matrix') // 'matrix' | 'dots' | 'scanline' | 'off'
+  const [themeActive, setThemeActive] = useState(true)
+  const [reduceMotion, setReduceMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+
+  useEffect(() => {
+    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const updateMotionPreference = () => setReduceMotion(motionPreference.matches)
+    motionPreference.addEventListener('change', updateMotionPreference)
+    return () => motionPreference.removeEventListener('change', updateMotionPreference)
+  }, [])
+
+  const toggleVideoPlay = () => {
+    if (!videoRef.current) return
+    if (videoRef.current.paused) {
+      videoRef.current.play().then(() => setVideoPlaying(true)).catch(() => {})
+    } else {
+      videoRef.current.pause()
+      setVideoPlaying(false)
+    }
+  }
+
+  const toggleMute = () => {
+    if (!videoRef.current) return
+    const nextMuted = !videoRef.current.muted
+    videoRef.current.muted = nextMuted
+    setIsMuted(nextMuted)
+  }
+
+  const cyclePixelMode = () => {
+    const modes = ['matrix', 'dots', 'scanline', 'off']
+    setPixelMode((curr) => modes[(modes.indexOf(curr) + 1) % modes.length])
+  }
+
+  const handleTimeUpdate = (event) => {
+    const current = event.currentTarget.currentTime
+    setVideoProgress(current)
+    if (current >= 10.0) {
+      event.currentTarget.currentTime = 0
+      setVideoProgress(0)
+    }
+  }
+
   const pending = tasks.filter((task) => !task.done).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4)
   const openTasks = tasks.filter((task) => !task.done)
   const expenseTotal = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0)
@@ -283,50 +343,131 @@ function Dashboard() {
   const distributionBackground = cropSegments.length ? `conic-gradient(${cropSegments.map((crop) => crop.segment).join(', ')})` : 'conic-gradient(rgba(255,255,255,.13) 0% 100%)'
   const todayLabel = new Intl.DateTimeFormat(language === 'kn' ? 'kn-IN' : 'en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(sessionDate)
   if (!profile) return <Onboarding />
-  return <div className="m-page">
-    <div className="m-welcome">
-      <div className="m-welcome-copy"><span className="m-eyebrow">{todayLabel} · FARM OVERVIEW</span><h1>Welcome back, {profile.name.split(' ')[0]} <span>👋</span></h1><p>Your fields are ready for another day of thoughtful growing.</p><div className="m-welcome-meta"><span>⌖ {profile.village || profile.district}, {profile.state}</span><span>▣ {profile.landSize} {profile.landUnit} registered</span></div><div className="m-welcome-actions"><Button onClick={() => navigate('/crop-growth')}>＋ Add crop record</Button><NavLink className="m-welcome-link" to="/ai-assistant">Ask Farm Assistant ↗</NavLink></div></div>
-      <div className="m-welcome-art" aria-hidden="true">
-        <svg className="m-farm-scene" viewBox="0 0 360 250" role="presentation">
-          <circle className="m-scene-sun" cx="292" cy="48" r="24" />
-          <path className="m-scene-hill" d="M0 142 47 103l34 26 45-52 48 53 43-34 51 39 36-22 56 41v96H0z" />
-          <path className="m-scene-field" d="M0 156q85-34 174 0t186 0v94H0z" />
-          <g className="m-scene-rows" fill="none" strokeLinecap="round">
-            <path d="M-20 235q130-77 400-54M-20 252q140-87 400-62M47 258q93-47 264-42" />
-            <path d="M69 203q-6-12-1-22m1 22q6-10 14-13m34 1q-5-13 0-23m0 23q7-11 15-14m35 8q-5-13 0-23m0 23q7-11 15-14m30 11q-5-13 0-23m0 23q7-11 15-14m29 16q-5-13 0-23m0 23q7-11 15-14" />
-          </g>
-          <g className="m-farmer">
-            <path className="m-farmer-legs" d="m197 139-22 37 8 25 13-1 2-19 24-27 4 29 13 14 12-6-7-25 3-27-25-20z" />
-            <path className="m-farmer-shirt" d="m191 104 17-8 17 8 25 30-28 25-35-20-14 14-9-9 13-27z" />
-            <path className="m-farmer-arm" d="m191 111-17 19 24 16m30-30 20 17 13 9" />
-            <path className="m-farmer-hand" d="m195 143 7 5m49-8 7 5" />
-            <path className="m-farmer-face" d="M196 82q0-19 18-19t18 19q0 16-18 20-18-4-18-20" />
-            <path className="m-farmer-hat" d="M191 77q3-18 24-19 18 2 22 17l-15-4-18 5z" />
-            <path className="m-farmer-boot" d="m174 197 1 7-17 5q-5 5 1 8h26l2-7-5-13zm72 1 2 8 15 7q4 5-2 7h-25l-2-9 2-12z" />
-          </g>
-          <g className="m-farm-tool">
-            <path d="m200 145 87 65" />
-            <path d="m278 202 20 4-6 15-17-2" />
-          </g>
-          <path className="m-scene-spark" d="m109 82 3 8 8 3-8 3-3 8-3-8-8-3 8-3zm180 76 2 6 6 2-6 2-2 6-2-6-6-2 6-2z" />
-        </svg>
-        <b>Growing with care</b>
+  return <div className={`m-page m-dashboard-page ${themeActive ? 'm-dashboard-video-theme' : ''}`}>
+    {themeActive && (
+      <div className={`m-dashboard-videography ${!videoPlaying ? 'is-paused' : ''}`}>
+        {!heroVideoFailed && !reduceMotion ? (
+          <video
+            ref={videoRef}
+            className="m-dashboard-bg-video"
+            aria-hidden="true"
+            tabIndex={-1}
+            autoPlay
+            muted={isMuted}
+            loop
+            playsInline
+            preload="auto"
+            poster={HERO_POSTER_URL}
+            onTimeUpdate={handleTimeUpdate}
+            onError={() => setHeroVideoFailed(true)}
+          >
+            <source src={HERO_VIDEO_URL} type="video/mp4" />
+          </video>
+        ) : (
+          <div className="m-dashboard-bg-poster" style={{ backgroundImage: `url(${HERO_POSTER_URL})` }} aria-hidden="true" />
+        )}
+        <div className={`m-dashboard-pixels-grid mode-${pixelMode}`} aria-hidden="true" />
+        <div className="m-dashboard-vignette" aria-hidden="true" />
+      </div>
+    )}
+
+    {/* UI Pixels 10-Second Live Videography Control Dock */}
+    <div className="m-videography-hud" role="region" aria-label="Dashboard Videography Controls">
+      <div className="m-videography-status">
+        <span className={`m-videography-dot ${videoPlaying ? 'live' : 'paused'}`} aria-hidden="true" />
+        <span className="m-videography-label">
+          <b>UI Pixels Farm Videography</b>
+          <small>Farmer working the land with farming tool · 10s Pexels loop</small>
+        </span>
+        <span className="m-videography-time-badge" aria-live="off">
+          {videoProgress.toFixed(1)}s / 10.0s Loop
+        </span>
+      </div>
+      <div className="m-videography-progress-track" title="10-second loop progress">
+        <div className="m-videography-progress-bar" style={{ width: `${Math.min(100, Math.max(0, (videoProgress / 10) * 100))}%` }} />
+      </div>
+      <div className="m-videography-controls">
+        <button
+          type="button"
+          className="m-videography-btn"
+          onClick={toggleVideoPlay}
+          title={videoPlaying ? 'Pause 10s background video' : 'Play 10s background video'}
+          aria-label={videoPlaying ? 'Pause video' : 'Play video'}
+        >
+          {videoPlaying ? '⏸ Pause' : '▶ Play'}
+        </button>
+        <button
+          type="button"
+          className={`m-videography-btn ${!isMuted ? 'active' : ''}`}
+          onClick={toggleMute}
+          title={isMuted ? 'Unmute farm audio' : 'Mute audio'}
+          aria-label={isMuted ? 'Unmute audio' : 'Mute audio'}
+        >
+          {isMuted ? '🔇 Muted' : '🔊 Sound'}
+        </button>
+        <button
+          type="button"
+          className={`m-videography-btn ${pixelMode !== 'off' ? 'active' : ''}`}
+          onClick={cyclePixelMode}
+          title="Cycle UI Pixels grid overlay (Matrix, Dots, Scanline, Off)"
+        >
+          ⊞ UI Pixels: <b>{pixelMode}</b>
+        </button>
+        <button
+          type="button"
+          className={`m-videography-btn ${themeActive ? 'active' : ''}`}
+          onClick={() => setThemeActive(!themeActive)}
+          title="Toggle ambient background videography theme"
+        >
+          {themeActive ? '✦ Theme Active' : '✧ Theme Off'}
+        </button>
+        <a
+          className="m-videography-credit"
+          href="https://www.pexels.com/video/farmer-tending-field-with-hoe-and-water-hose-37654726/"
+          target="_blank"
+          rel="noreferrer"
+          title="View original stock video on Pexels"
+        >
+          Pexels ↗
+        </a>
       </div>
     </div>
+
+    <div className="m-welcome">
+      {!themeActive && !heroVideoFailed && !reduceMotion && <video
+        className="m-welcome-video"
+        aria-hidden="true"
+        tabIndex={-1}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        poster={HERO_POSTER_URL}
+        onTimeUpdate={(event) => {
+          if (event.currentTarget.currentTime >= 10) event.currentTarget.currentTime = 0
+        }}
+        onError={() => setHeroVideoFailed(true)}
+      >
+        <source src={HERO_VIDEO_URL} type="video/mp4" />
+      </video>}
+      <div className="m-welcome-copy"><span className="m-eyebrow">{todayLabel} · FARM OVERVIEW</span><h1>{t('Welcome back', language)}, {profile?.name ? profile.name.split(' ')[0] : 'Farmer'} <span>👋</span></h1><p>{t('Your fields are ready for another day of thoughtful growing.', language)}</p><div className="m-welcome-meta"><span>⌖ {profile.village || profile.district}, {profile.state}</span><span>▣ {profile.landSize} {profile.landUnit} registered</span></div><div className="m-welcome-actions"><Button onClick={() => navigate('/crop-growth')}>{t('+ Add crop record', language)}</Button><NavLink className="m-welcome-link" to="/ai-assistant">{t('Ask Farm Assistant →', language)}</NavLink></div></div>
+      <a className="m-welcome-video-credit" href="https://www.pexels.com/video/farmer-tending-field-with-hoe-and-water-hose-37654726/" target="_blank" rel="noreferrer">Farmer at work · Pexels ↗</a>
+    </div>
     <div className="m-stat-grid m-dashboard-stats">
-      <Card className="m-stat"><span className="m-stat-icon">⌂</span><span>Registered land</span><b>{profile.landSize} <small>{profile.landUnit}</small></b><small className="m-stat-foot">Farm profile record</small></Card>
-      <Card className="m-stat"><span className="m-stat-icon">♧</span><span>Crops registered</span><b>{crops.length}</b><small className="m-stat-foot">{cropArea ? `${cropArea.toLocaleString()} acres recorded` : 'No crop area recorded'}</small></Card>
+      <Card className="m-stat"><span className="m-stat-icon">⌂</span><span>{t('Registered land', language)}</span><b>{profile.landSize} <small>{profile.landUnit}</small></b><small className="m-stat-foot">Farm profile record</small></Card>
+      <Card className="m-stat"><span className="m-stat-icon">♧</span><span>{t('Crops registered', language)}</span><b>{crops.length}</b><small className="m-stat-foot">{cropArea ? `${cropArea.toLocaleString()} acres recorded` : 'No crop area recorded'}</small></Card>
       <Card className="m-stat"><span className="m-stat-icon">▦</span><span>Open farm tasks</span><b>{openTasks.length}</b><small className="m-stat-foot">{openTasks.length ? `${openTasks.filter((task) => task.date <= dateToday()).length} due today or earlier` : 'No open reminders'}</small></Card>
       <Card className="m-stat"><span className="m-stat-icon">✚</span><span>AI health score</span><b className="m-stat-unavailable">Not assessed</b><small className="m-stat-foot">No verified crop-health score</small></Card>
     </div>
     <div className="m-dashboard-columns m-dashboard-primary">
-      <Card className="m-dashboard-health"><div className="m-section-title"><div><span className="m-eyebrow">Field monitoring</span><h2>Field health overview</h2></div><NavLink to="/crop-doctor">Open Crop Doctor ↗</NavLink></div>
+      <Card className="m-dashboard-health"><div className="m-section-title"><div><span className="m-eyebrow">Field monitoring</span><h2>{t('Field health overview', language)}</h2></div><NavLink to="/crop-doctor">{t('Open Crop Doctor →', language)}</NavLink></div>
         <div className="m-health-empty"><div className="m-health-ring"><span>—</span></div><div><b>Health checks need field observations</b><p>No verified AI crop diagnosis or measured field-health data is available yet. Check a plant photo or record what you observe.</p><NavLink className="m-button primary" to="/crop-doctor">Check a crop photo</NavLink></div></div>
       </Card>
       <WeatherPeek location={profile.village || profile.district || ''} onOpen={() => navigate('/weather')} />
     </div>
     <div className="m-dashboard-columns m-dashboard-secondary">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm profile</span><h2>Soil health summary</h2></div><NavLink to="/smart-water">Soil Vision →</NavLink></div><div className="m-soil-summary"><span className="m-soil-icon">♧</span><div><b>{profile.soil || 'Soil type not recorded'}</b><small>Farmer-entered profile · not a laboratory measurement</small></div></div><div className="m-soil-summary-grid"><div><small>Water availability</small><b>{profile.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{profile.irrigation || 'Not recorded'}</b></div></div><NavLink className="m-button light" to="/smart-water">Open soil tools</NavLink></Card>
+      <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm profile</span><h2>{t('Soil health summary', language)}</h2></div><NavLink to="/smart-water">{t('Open soil tools', language)} →</NavLink></div><div className="m-soil-summary"><span className="m-soil-icon">♧</span><div><b>{profile.soil || 'Soil type not recorded'}</b><small>Farmer-entered profile · not a laboratory measurement</small></div></div><div className="m-soil-summary-grid"><div><small>Water availability</small><b>{profile.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{profile.irrigation || 'Not recorded'}</b></div></div><NavLink className="m-button light" to="/smart-water">Open soil tools</NavLink></Card>
       <Card><div className="m-section-title"><div><span className="m-eyebrow">On your land</span><h2>Crop distribution</h2></div><NavLink to="/crop-growth">Manage crops →</NavLink></div>
         {cropSegments.length ? <div className="m-crop-distribution"><div className="m-crop-donut" style={{ background: distributionBackground }}><span>{cropArea.toLocaleString()}<small>acres</small></span></div><div className="m-crop-legend">{cropSegments.slice(0, 5).map((crop) => <div key={crop.id}><i style={{ background: crop.color }} /><span>{crop.name}</span><b>{Number(crop.area || 0).toLocaleString()} ac</b></div>)}</div></div> : <EmptyState title="No crop area recorded" detail="Add crop and field area records to see their distribution." action={<Button variant="light" onClick={() => navigate('/crop-growth')}>Add crop</Button>} />}
       </Card>
@@ -351,7 +492,7 @@ function Dashboard() {
     </div>
     <div className="m-dashboard-columns">
       <Card><div className="m-section-title"><div><span className="m-eyebrow">Market information</span><h2>Mandi price highlights</h2></div><NavLink to="/market-price">Open source →</NavLink></div><div className="m-not-connected"><span>₹</span><p><b>Live prices not connected</b><small>We do not show sample rates as today's prices. Check Agmarknet for verified market reports.</small></p><a href="https://agmarknet.gov.in/" target="_blank" rel="noreferrer">Agmarknet ↗</a></div></Card>
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Planning guidance</span><h2>Plan with verified local information</h2></div><NavLink to="/crop-analyzer">Open crop planning →</NavLink></div><p>No ranked crop predictions or yield estimates are shown without a verified local source.</p><div className="m-dashboard-alert"><b>Crop health is not assessed</b><small>No diagnosis or measured field-health data is available. Record observations or submit a crop photo when the trained model is ready.</small><NavLink to="/crop-doctor">Open Crop Doctor →</NavLink></div></Card>
+      <Card><div className="m-section-title"><div><span className="m-eyebrow">Planning guidance</span><h2>Plan with verified local information</h2></div><NavLink to="/crop-analyzer">Open Crop Analyzer →</NavLink></div><p>No ranked crop predictions or yield estimates are shown without a verified local source.</p><div className="m-dashboard-alert"><b>Crop health is not assessed</b><small>No diagnosis or measured field-health data is available. Record observations or submit a crop photo when the trained model is ready.</small><NavLink to="/crop-doctor">Open Crop Doctor →</NavLink></div></Card>
     </div>
   </div>
 }
@@ -451,15 +592,1291 @@ function MyFarmPage() {
   </div>
 }
 
+
+const CROP_CATALOG = [
+  {
+    id: 'maize',
+    name: 'Maize (Corn)',
+    localName: 'ಮೆಕ್ಕೆಜೋಳ / मक्का',
+    icon: '🌽',
+    category: 'Cereals & Millets',
+    soils: ['Loamy', 'Black', 'Alluvial', 'Red'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Rabi (Winter)', 'Zaid (Summer)'],
+    waterReq: 'Moderate / Rainfed',
+    minRainfall: '500-750 mm',
+    durationDays: 105,
+    durationText: '95 - 110 days',
+    costPerAcre: 18500,
+    expectedYield: '28 - 34 quintals/acre',
+    yieldPerAcreNum: 30,
+    unitPrice: 2150,
+    netProfitPerAcre: 46000,
+    roi: '148%',
+    risk: 'Low',
+    suitabilityReason: 'Excellent response to warm climate and well-drained loams/black soil with moderate water requirement.',
+    npkSchedule: '120 kg N : 60 kg P2O5 : 40 kg K2O per hectare. 1/3 N at sowing, 1/3 at knee-high, 1/3 at tasseling.',
+    irrigationCritical: 'Knee-high stage (30-35 DAS), Tasseling (50-55 DAS), and Silking / Grain fill (65-75 DAS).',
+    pestAlert: 'Scout for Fall Armyworm (FAW) on young whorls and stem borer; apply neem or chlorantraniliprole if needed.',
+    companion: 'Pigeon pea (Tur) or Green gram in 2:1 intercrop ratio to enrich soil nitrogen.',
+  },
+  {
+    id: 'groundnut',
+    name: 'Groundnut (Peanut)',
+    localName: 'ಕಡಲೆಕಾಯಿ / मूंगफली',
+    icon: '🥜',
+    category: 'Oilseeds & Cash Crops',
+    soils: ['Red', 'Sandy', 'Loamy'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Rabi (Winter)'],
+    waterReq: 'Moderate / Rainfed',
+    minRainfall: '450-600 mm',
+    durationDays: 115,
+    durationText: '110 - 125 days',
+    costPerAcre: 22000,
+    expectedYield: '10 - 14 quintals/acre',
+    yieldPerAcreNum: 12,
+    unitPrice: 5800,
+    netProfitPerAcre: 47600,
+    roi: '116%',
+    risk: 'Low to Moderate',
+    suitabilityReason: 'Light porous red/sandy-loam soils allow easy pegging and pod development; fixes atmospheric nitrogen.',
+    npkSchedule: '25 kg N : 50 kg P2O5 : 25 kg K2O + 200 kg Gypsum at flowering (45 DAS) for calcium and sulfur.',
+    irrigationCritical: 'Flowering (30-40 DAS) and Pegging / Pod development (50-70 DAS). Avoid moisture stress during peg penetration.',
+    pestAlert: 'Tikka leaf spot (Cercospora) and collar rot; ensure seed treatment with Trichoderma.',
+    companion: 'Castor or Pearl millet as border trap crop; intercrop with Pigeon pea.',
+  },
+  {
+    id: 'chickpea',
+    name: 'Chickpea (Bengal Gram / Chana)',
+    localName: 'ಕಡಲೆ / चना',
+    icon: '🥣',
+    category: 'Pulses',
+    soils: ['Black', 'Clay', 'Loamy', 'Alluvial'],
+    seasons: ['Rabi (Winter)'],
+    waterReq: 'Scarce / Dryland',
+    minRainfall: '300-450 mm',
+    durationDays: 105,
+    durationText: '100 - 115 days',
+    costPerAcre: 14000,
+    expectedYield: '8 - 12 quintals/acre',
+    yieldPerAcreNum: 10,
+    unitPrice: 5450,
+    netProfitPerAcre: 40500,
+    roi: '189%',
+    risk: 'Low',
+    suitabilityReason: 'Thrives in residual moisture of heavy black or clay-loam soils; ideal low-input high-return Rabi pulse.',
+    npkSchedule: '20 kg N : 40 kg P2O5 : 20 kg K2O. Seed inoculation with Rhizobium and PSB biofertilizer.',
+    irrigationCritical: 'Pre-flowering (45 DAS) and Pod development (70 DAS). Never irrigate during peak flowering.',
+    pestAlert: 'Helicoverpa armigera (pod borer); install pheromone traps (5/acre) and spray HaNPV or bio-pesticides.',
+    companion: 'Mustard or Linseed intercropped (4:1 row ratio) disrupts pod borer egg laying.',
+  },
+  {
+    id: 'wheat',
+    name: 'Wheat',
+    localName: 'ಗೋಧಿ / गेहूं',
+    icon: '🌾',
+    category: 'Cereals & Millets',
+    soils: ['Alluvial', 'Loamy', 'Clay', 'Black'],
+    seasons: ['Rabi (Winter)'],
+    waterReq: 'Adequate / Irrigated',
+    minRainfall: '400-500 mm',
+    durationDays: 120,
+    durationText: '110 - 130 days',
+    costPerAcre: 18000,
+    expectedYield: '20 - 25 quintals/acre',
+    yieldPerAcreNum: 22,
+    unitPrice: 2425,
+    netProfitPerAcre: 35350,
+    roi: '96%',
+    risk: 'Low',
+    suitabilityReason: 'Cold winter climate combined with fertile alluvial or loamy soils yields stable grain and valuable straw.',
+    npkSchedule: '120 kg N : 60 kg P2O5 : 40 kg K2O per hectare. Half N + full P & K at sowing; half N top-dressed.',
+    irrigationCritical: 'Crown Root Initiation (CRI) at 21 DAS is mandatory; subsequent irrigations at Tillering, Jointing, Flowering, and Milk stages.',
+    pestAlert: 'Yellow rust in cool regions and termites; seed treatment with chlorpyriphos or thiamethoxam.',
+    companion: 'Mustard or Chickpea in traditional strip cropping.',
+  },
+  {
+    id: 'cotton',
+    name: 'Cotton',
+    localName: 'ಹತ್ತಿ / कपास',
+    icon: '☁️',
+    category: 'Oilseeds & Cash Crops',
+    soils: ['Black', 'Alluvial', 'Loamy'],
+    seasons: ['Kharif (Monsoon/Summer)'],
+    waterReq: 'Adequate / Irrigated',
+    minRainfall: '650-1000 mm',
+    durationDays: 165,
+    durationText: '150 - 180 days',
+    costPerAcre: 29000,
+    expectedYield: '12 - 16 quintals/acre',
+    yieldPerAcreNum: 14,
+    unitPrice: 7100,
+    netProfitPerAcre: 70400,
+    roi: '142%',
+    risk: 'Moderate',
+    suitabilityReason: 'Deep black cotton soils with high moisture-retention capacity are historically the gold standard for cotton.',
+    npkSchedule: '100 kg N : 50 kg P2O5 : 50 kg K2O in 3 split doses (sowing, square formation, flowering).',
+    irrigationCritical: 'Flowering and boll formation stages. Avoid water stress when bolls are sizing.',
+    pestAlert: 'Pink bollworm and sucking pests (thrips, whitefly, jassids); install light traps and scout regularly.',
+    companion: 'Green gram or Cowpea intercrop provides supplementary income and natural predator habitat.',
+  },
+  {
+    id: 'tomato',
+    name: 'Tomato',
+    localName: 'ಟೊಮ್ಯಾಟೊ / टमाटर',
+    icon: '🍅',
+    category: 'Vegetables',
+    soils: ['Loamy', 'Red', 'Alluvial', 'Black'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Rabi (Winter)', 'Zaid (Summer)'],
+    waterReq: 'Adequate / Irrigated',
+    minRainfall: '600-800 mm',
+    durationDays: 110,
+    durationText: '90 - 120 days',
+    costPerAcre: 38000,
+    expectedYield: '160 - 220 quintals/acre',
+    yieldPerAcreNum: 180,
+    unitPrice: 1300,
+    netProfitPerAcre: 196000,
+    roi: '415%',
+    risk: 'Moderate to High',
+    suitabilityReason: 'High-value commercial horticultural crop with excellent returns when drip irrigation and trellising are used.',
+    npkSchedule: '150 kg N : 100 kg P2O5 : 120 kg K2O per hectare through fertigation, plus micronutrient foliar spray.',
+    irrigationCritical: 'Uniform light irrigations at 3-4 day intervals; avoid alternate soaking and drying to prevent blossom-end rot and fruit cracking.',
+    pestAlert: 'Early/Late Blight and Tomato Leaf Curl Virus; manage whitefly vectors with yellow sticky cards.',
+    companion: 'Marigold (Tagetes) border plantation suppresses soil nematodes and repels insect pests.',
+  },
+  {
+    id: 'ragi',
+    name: 'Finger Millet (Ragi)',
+    localName: 'ರಾಗಿ / रागी',
+    icon: '🌾',
+    category: 'Cereals & Millets',
+    soils: ['Red', 'Loamy', 'Laterite', 'Sandy'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Rabi (Winter)'],
+    waterReq: 'Scarce / Dryland',
+    minRainfall: '400-600 mm',
+    durationDays: 105,
+    durationText: '100 - 115 days',
+    costPerAcre: 12500,
+    expectedYield: '14 - 18 quintals/acre',
+    yieldPerAcreNum: 16,
+    unitPrice: 3850,
+    netProfitPerAcre: 49100,
+    roi: '292%',
+    risk: 'Very Low',
+    suitabilityReason: 'Extreme resilience to drought, thrives in acidic low-fertility red soils, very low pest incidence, high nutritional market demand.',
+    npkSchedule: '50 kg N : 40 kg P2O5 : 25 kg K2O. Incorporate 5 tonnes farmyard manure (FYM) before planting.',
+    irrigationCritical: 'Tillering and Grain filling; usually rainfed, but 1-2 protective irrigations double grain yield.',
+    pestAlert: 'Blast disease (Pyricularia); use certified resistant seeds like ML-365, GPU-28 or MR-1.',
+    companion: 'Pigeon pea or Field bean (Avare) in 8:2 row ratio provides balanced nutrition and soil enrichment.',
+  },
+  {
+    id: 'paddy',
+    name: 'Paddy Rice',
+    localName: 'ಭತ್ತ / धान',
+    icon: '🍚',
+    category: 'Cereals & Millets',
+    soils: ['Clay', 'Alluvial', 'Loamy'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Rabi (Winter)'],
+    waterReq: 'Adequate / Irrigated',
+    minRainfall: '1000-1500 mm',
+    durationDays: 130,
+    durationText: '120 - 140 days',
+    costPerAcre: 26000,
+    expectedYield: '28 - 36 quintals/acre',
+    yieldPerAcreNum: 32,
+    unitPrice: 2200,
+    netProfitPerAcre: 44400,
+    roi: '70%',
+    risk: 'Low',
+    suitabilityReason: 'Heavy clay and alluvial soils hold puddling water efficiently; assured staple market demand.',
+    npkSchedule: '100 kg N : 50 kg P2O5 : 50 kg K2O + 25 kg Zinc Sulfate at transplanting.',
+    irrigationCritical: 'Continuous saturation from transplanting to milk stage; drain water 10 days before harvest.',
+    pestAlert: 'Stem borer, leaf folder, and blast; adopt alternate wetting and drying (AWD) to strengthen roots.',
+    companion: 'Follow with Pulses (Urad/Moong) as relay crop using residual moisture (Rice fallows).',
+  },
+  {
+    id: 'soybean',
+    name: 'Soybean',
+    localName: 'ಸೋಯಾಬೀನ್ / सोयाबीन',
+    icon: '🌱',
+    category: 'Oilseeds & Cash Crops',
+    soils: ['Black', 'Loamy', 'Alluvial'],
+    seasons: ['Kharif (Monsoon/Summer)'],
+    waterReq: 'Moderate / Rainfed',
+    minRainfall: '600-800 mm',
+    durationDays: 95,
+    durationText: '90 - 105 days',
+    costPerAcre: 16500,
+    expectedYield: '10 - 14 quintals/acre',
+    yieldPerAcreNum: 12,
+    unitPrice: 4600,
+    netProfitPerAcre: 38700,
+    roi: '134%',
+    risk: 'Low to Moderate',
+    suitabilityReason: 'Fast-maturing dual pulse-oilseed crop, deep rooting enriches black soil with biological nitrogen.',
+    npkSchedule: '30 kg N : 60 kg P2O5 : 40 kg K2O. Treat seed with Bradyrhizobium japonicum.',
+    irrigationCritical: 'Flowering and Pod-filling stages. Water stress at pod fill reduces grain weight.',
+    pestAlert: 'Girdle beetle and rust; spray neem seed kernel extract or recommended biofungicide.',
+    companion: 'Pigeon pea (4:2 ratio) or Maize; ideal Kharif precursor to Rabi Wheat.',
+  },
+  {
+    id: 'sorghum',
+    name: 'Sorghum (Jowar)',
+    localName: 'ಜೋಳ / ज्वार',
+    icon: '🌾',
+    category: 'Cereals & Millets',
+    soils: ['Black', 'Loamy', 'Clay', 'Red'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Rabi (Winter)'],
+    waterReq: 'Scarce / Dryland',
+    minRainfall: '400-600 mm',
+    durationDays: 110,
+    durationText: '100 - 115 days',
+    costPerAcre: 13000,
+    expectedYield: '14 - 18 quintals/acre',
+    yieldPerAcreNum: 16,
+    unitPrice: 2950,
+    netProfitPerAcre: 34200,
+    roi: '163%',
+    risk: 'Very Low',
+    suitabilityReason: 'Excellent drought resistance and extensive root system; provides high market value grain plus nutritious cattle fodder.',
+    npkSchedule: '80 kg N : 40 kg P2O5 : 40 kg K2O. Split nitrogen half at sowing, half at knee-high.',
+    irrigationCritical: 'Panicle initiation and grain filling stages if grown with irrigation.',
+    pestAlert: 'Shoot fly in early seedlings (first 3 weeks); sow within 10 days of monsoon onset to escape damage.',
+    companion: 'Cowpea or Green gram intercropping improves fodder protein and checks weeds.',
+  },
+  {
+    id: 'chilli',
+    name: 'Chilli',
+    localName: 'ಮೆಣಸಿನಕಾಯಿ / मिर्च',
+    icon: '🌶️',
+    category: 'Vegetables',
+    soils: ['Black', 'Loamy', 'Red'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Rabi (Winter)'],
+    waterReq: 'Adequate / Irrigated',
+    minRainfall: '600-800 mm',
+    durationDays: 150,
+    durationText: '140 - 160 days',
+    costPerAcre: 34000,
+    expectedYield: '14 - 18 quintals dry/acre',
+    yieldPerAcreNum: 16,
+    unitPrice: 11500,
+    netProfitPerAcre: 150000,
+    roi: '341%',
+    risk: 'Moderate',
+    suitabilityReason: 'Warm climate cash crop with substantial export and domestic market value; highly responsive to fertigation.',
+    npkSchedule: '120 kg N : 60 kg P2O5 : 80 kg K2O. Top-dress nitrogen in 4 splits after every picking.',
+    irrigationCritical: 'Light frequent irrigations; avoid water stagnation which causes root rot and damping off.',
+    pestAlert: 'Thrips, mites, and Anthracnose fruit rot; apply sulfur for mites and neem oil for thrips.',
+    companion: 'Onion or Coriander as border crop to confuse thrips.',
+  },
+  {
+    id: 'onion',
+    name: 'Onion',
+    localName: 'ಈರುಳ್ಳಿ / प्याज',
+    icon: '🧅',
+    category: 'Vegetables',
+    soils: ['Loamy', 'Alluvial', 'Red', 'Black'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Rabi (Winter)', 'Zaid (Summer)'],
+    waterReq: 'Adequate / Irrigated',
+    minRainfall: '550-700 mm',
+    durationDays: 120,
+    durationText: '110 - 130 days',
+    costPerAcre: 32000,
+    expectedYield: '90 - 130 quintals/acre',
+    yieldPerAcreNum: 110,
+    unitPrice: 1750,
+    netProfitPerAcre: 160500,
+    roi: '401%',
+    risk: 'Moderate',
+    suitabilityReason: 'High-demand vegetable staple with quick liquidity; requires loose, friable, well-aerated soil for bulb expansion.',
+    npkSchedule: '100 kg N : 50 kg P2O5 : 50 kg K2O + 20 kg Sulfur per hectare for pungency and storage life.',
+    irrigationCritical: 'Bulb enlargement stage requires regular moisture; withhold irrigation 12-15 days prior to harvest.',
+    pestAlert: 'Thrips and Purple blotch; keep field weed-free to prevent thrips sheltering.',
+    companion: 'Carrot or Beetroot in kitchen gardens; excellent rotation after paddy or maize.',
+  },
+  {
+    id: 'green_gram',
+    name: 'Green Gram (Moong)',
+    localName: 'ಹೆಸರು ಕಾಳು / मूंग',
+    icon: '🌿',
+    category: 'Pulses',
+    soils: ['Loamy', 'Alluvial', 'Red', 'Black', 'Sandy'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Zaid (Summer)'],
+    waterReq: 'Scarce / Dryland',
+    minRainfall: '350-500 mm',
+    durationDays: 65,
+    durationText: '60 - 70 days',
+    costPerAcre: 9500,
+    expectedYield: '6 - 8 quintals/acre',
+    yieldPerAcreNum: 7,
+    unitPrice: 7300,
+    netProfitPerAcre: 41600,
+    roi: '337%',
+    risk: 'Low',
+    suitabilityReason: 'Shortest duration cash pulse (65 days); restores nitrogen into soil, fits perfectly into gaps between main seasons.',
+    npkSchedule: '20 kg N : 40 kg P2O5 : 20 kg K2O. Seed priming with rhizobium improves nodulation.',
+    irrigationCritical: 'Branching and Pod development stages. Usually needs only 1-2 irrigations in summer.',
+    pestAlert: 'Yellow mosaic virus (YMV); use resistant varieties (like IPM 02-3 or Pusa Vishal) and check whitefly.',
+    companion: 'Ideal intercrop with Sugarcane, Cotton, or Maize.',
+  },
+  {
+    id: 'mustard',
+    name: 'Mustard (Rapeseed)',
+    localName: 'ಸಾಸಿವೆ / सरसों',
+    icon: '🌼',
+    category: 'Oilseeds & Cash Crops',
+    soils: ['Alluvial', 'Loamy', 'Clay'],
+    seasons: ['Rabi (Winter)'],
+    waterReq: 'Moderate / Rainfed',
+    minRainfall: '350-450 mm',
+    durationDays: 110,
+    durationText: '100 - 120 days',
+    costPerAcre: 13000,
+    expectedYield: '8 - 12 quintals/acre',
+    yieldPerAcreNum: 10,
+    unitPrice: 5350,
+    netProfitPerAcre: 40500,
+    roi: '211%',
+    risk: 'Low',
+    suitabilityReason: 'Cool-season oilseed with minimal water needs; thrives in alluvial and loamy soils with deep root moisture.',
+    npkSchedule: '80 kg N : 40 kg P2O5 : 40 kg K2O + 20 kg Sulfur. Sulfur directly increases oil content by 2-3%.',
+    irrigationCritical: 'Rosette stage (30 DAS) and Siliquae (pod) filling stage (60-65 DAS).',
+    pestAlert: 'Aphids during flowering; spray yellow sticky traps and apply dimethoate or neem oil if threshold crossed.',
+    companion: 'Wheat-Mustard intercrop (9:1 ratio) is a proven northern and central Indian practice.',
+  },
+  {
+    id: 'pigeon_pea',
+    name: 'Pigeon Pea (Tur / Arhar)',
+    localName: 'ತೊಗರಿ / अरहर',
+    icon: '🍲',
+    category: 'Pulses',
+    soils: ['Black', 'Loamy', 'Red', 'Alluvial'],
+    seasons: ['Kharif (Monsoon/Summer)'],
+    waterReq: 'Moderate / Rainfed',
+    minRainfall: '550-750 mm',
+    durationDays: 165,
+    durationText: '150 - 180 days',
+    costPerAcre: 15500,
+    expectedYield: '8 - 12 quintals/acre',
+    yieldPerAcreNum: 10,
+    unitPrice: 7100,
+    netProfitPerAcre: 55500,
+    roi: '258%',
+    risk: 'Low to Moderate',
+    suitabilityReason: 'Deep root architecture breaks hard subsoil layers; resilient to intermittent dry spells; fetches premium market price.',
+    npkSchedule: '25 kg N : 50 kg P2O5 : 20 kg K2O. Requires phosphorus for active root nodule development.',
+    irrigationCritical: 'Flower initiation (75-80 DAS) and Pod fill (110-120 DAS) if rains cease early.',
+    pestAlert: 'Pod borer (Helicoverpa) and sterility mosaic; use Maruca-tolerant cultivars like TS-3R or ICP-8863.',
+    companion: 'Universal companion intercrop with Cotton (1:1), Soybean (2:1), or Sorghum (2:1).',
+  },
+  {
+    id: 'sugarcane',
+    name: 'Sugarcane',
+    localName: 'ಕಬ್ಬು / गन्ना',
+    icon: '🎋',
+    category: 'Oilseeds & Cash Crops',
+    soils: ['Alluvial', 'Black', 'Loamy', 'Clay'],
+    seasons: ['Kharif (Monsoon/Summer)', 'Rabi (Winter)', 'Year-round'],
+    waterReq: 'Adequate / Irrigated',
+    minRainfall: '1200-1500 mm',
+    durationDays: 330,
+    durationText: '300 - 365 days',
+    costPerAcre: 48000,
+    expectedYield: '360 - 450 quintals/acre',
+    yieldPerAcreNum: 400,
+    unitPrice: 320,
+    netProfitPerAcre: 80000,
+    roi: '66%',
+    risk: 'Low',
+    suitabilityReason: 'Long-duration industrial crop with guaranteed mill purchase (Fair & Remunerative Price); high biomass output.',
+    npkSchedule: '250 kg N : 100 kg P2O5 : 120 kg K2O in 3 split doses up to 90 days after planting.',
+    irrigationCritical: 'Formative phase (60-150 DAS) and Grand growth phase; drip with trash mulching saves 40% water.',
+    pestAlert: 'Early shoot borer and Red rot; use single-bud seedlings and Trichogramma egg parasitoids.',
+    companion: 'Short-duration pulses (Moong/Urad) can be grown in inter-row spaces during the first 60 days.',
+  },
+  {
+    id: 'watermelon',
+    name: 'Watermelon',
+    localName: 'ಕಲ್ಲಂಗಡಿ / तरबूज',
+    icon: '🍉',
+    category: 'Vegetables',
+    soils: ['Sandy', 'Loamy', 'Alluvial'],
+    seasons: ['Zaid (Summer)'],
+    waterReq: 'Adequate / Irrigated',
+    minRainfall: '400-600 mm',
+    durationDays: 85,
+    durationText: '80 - 95 days',
+    costPerAcre: 29000,
+    expectedYield: '180 - 240 quintals/acre',
+    yieldPerAcreNum: 200,
+    unitPrice: 750,
+    netProfitPerAcre: 121000,
+    roi: '317%',
+    risk: 'Moderate',
+    suitabilityReason: 'Warm sunshine and porous sandy-loams promote high brix sugar accumulation and rapid harvest turnaround.',
+    npkSchedule: '100 kg N : 60 kg P2O5 : 80 kg K2O. Drip fertigation with water-soluble 19:19:19 and 0:0:50.',
+    irrigationCritical: 'Flowering and Fruit enlargement stages; reduce watering 1 week before harvest to enhance sweetness.',
+    pestAlert: 'Fruit fly and downy mildew; install methyl eugenol pheromone traps (6/acre).',
+    companion: 'Intercropping is not recommended due to vine sprawling; practice rotational green manuring.',
+  },
+  {
+    id: 'potato',
+    name: 'Potato',
+    localName: 'ಆಲೂಗಡ್ಡೆ / आलू',
+    icon: '🥔',
+    category: 'Vegetables',
+    soils: ['Loamy', 'Alluvial', 'Sandy'],
+    seasons: ['Rabi (Winter)'],
+    waterReq: 'Adequate / Irrigated',
+    minRainfall: '450-600 mm',
+    durationDays: 95,
+    durationText: '90 - 105 days',
+    costPerAcre: 36000,
+    expectedYield: '90 - 130 quintals/acre',
+    yieldPerAcreNum: 110,
+    unitPrice: 1100,
+    netProfitPerAcre: 85000,
+    roi: '136%',
+    risk: 'Moderate',
+    suitabilityReason: 'Cool-season tuber crop requiring loose, well-drained, aerated soils for rapid stolon and tuber development.',
+    npkSchedule: '150 kg N : 100 kg P2O5 : 120 kg K2O. Full P & K and half N as basal, half N at earthing-up (30 DAS).',
+    irrigationCritical: 'Stolon formation (20-25 DAS) and Tuber bulking (45-65 DAS). Avoid water stress during tuber initiation.',
+    pestAlert: 'Late blight and aphid vectors; apply preventive Mancozeb or metalaxyl during foggy cool weather.',
+    companion: 'Mustard border or Maize windbreak; excellent rotational crop after Kharif green manure.',
+  }
+];
+
 function CropPlanner() {
-  const { profile } = useFarm()
-  return <div className="m-page"><Heading eyebrow="Crop planning" title="Plan with verified local information" detail="No official crop-suitability dataset or local yield/cost feed is connected, so this page does not invent rankings, scores, yields, or budgets." />
-    <Card><div className="m-section-title"><div><span className="m-eyebrow">Farmer-entered information</span><h2>Your recorded field conditions</h2></div><NavLink to="/profile">Update farm profile →</NavLink></div>
-      <div className="m-soil-summary-grid"><div><small>Soil type</small><b>{profile?.soil || 'Not recorded'}</b></div><div><small>Water availability</small><b>{profile?.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{profile?.irrigation || 'Not recorded'}</b></div><div><small>Farm area</small><b>{profile ? `${profile.landSize} ${profile.landUnit}` : 'Not recorded'}</b></div></div>
-    </Card>
-    <Card><h2>Check local recommendations before planting</h2><p>Crop suitability also depends on season, local variety, soil-test results, drainage, water supply, and current agricultural guidance. Ask your local Krishi Vigyan Kendra or agriculture officer before investing.</p><div className="m-learning-resources"><div><a href="https://icar.gov.in/" target="_blank" rel="noreferrer">Indian Council of Agricultural Research ↗</a><a href="https://soilhealth.dac.gov.in/" target="_blank" rel="noreferrer">Soil Health Card portal ↗</a><small>Official information links; these are not connected data feeds or personalized recommendations.</small></div></div></Card>
-  </div>
+  const { profile, crops, setCrops, tasks, setTasks } = useFarm();
+  const navigate = useNavigate();
+  const token = localStorage.getItem(CHAT_TOKEN_KEY) || '';
+
+  // Mode tab: 'image-analyzer' | 'crop-planner'
+  const [activeTab, setActiveTab] = useState('image-analyzer');
+
+  // Image Analyzer state
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [cropName, setCropName] = useState('');
+  const [observations, setObservations] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [imgError, setImgError] = useState('');
+  const [diagnosis, setDiagnosis] = useState(null);
+  const [supportedCropInfo, setSupportedCropInfo] = useState({ crops: [], modelLoaded: true, message: '' });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/crop-doctor/supported-crops', { signal: controller.signal })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (res.ok && !controller.signal.aborted) setSupportedCropInfo(body);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!previewUrl) return undefined;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  const chooseImage = (selectedFile) => {
+    setImgError('');
+    if (!selectedFile) return;
+    const supportedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!supportedTypes.includes(selectedFile.type)) {
+      setFile(null);
+      setPreviewUrl('');
+      return setImgError('Please choose a JPG, PNG, or WEBP image.');
+    }
+    if (selectedFile.size > 5 * 1024 * 1024) {
+      setFile(null);
+      setPreviewUrl('');
+      return setImgError('Image size must be smaller than 5 MB.');
+    }
+    setPreviewUrl(URL.createObjectURL(selectedFile));
+    setFile(selectedFile);
+    setDiagnosis(null);
+  };
+
+  const submitImage = async (event) => {
+    event?.preventDefault();
+    if (!file) return setImgError('Take or choose a plant leaf image first.');
+    setLoading(true);
+    setProgress(0);
+    setImgError('');
+    try {
+      const result = await uploadCropImage({ token, file, cropName, observations, onProgress: setProgress });
+      setDiagnosis({ ...result, previewUrl });
+      showToast(`Analysis complete: ${result.plantName} — ${result.diseaseName}`);
+    } catch (requestError) {
+      setImgError(requestError.message || 'Analysis failed. Check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Normalize initial soil from profile
+  const initialSoil = profile?.soil
+    ? (profile.soil.toLowerCase().includes('black') ? 'Black'
+      : profile.soil.toLowerCase().includes('red') ? 'Red'
+      : profile.soil.toLowerCase().includes('clay') ? 'Clay'
+      : profile.soil.toLowerCase().includes('sand') ? 'Sandy'
+      : profile.soil.toLowerCase().includes('alluv') ? 'Alluvial'
+      : profile.soil.toLowerCase().includes('later') ? 'Laterite'
+      : 'Loamy')
+    : 'Loamy';
+
+  // Current Season based on month:
+  // June-Oct: Kharif, Nov-Feb: Rabi, Mar-May: Zaid
+  const currentMonth = new Date().getMonth();
+  const defaultSeason = (currentMonth >= 5 && currentMonth <= 9)
+    ? 'Kharif (Monsoon/Summer)'
+    : (currentMonth >= 10 || currentMonth <= 1)
+      ? 'Rabi (Winter)'
+      : 'Zaid (Summer)';
+
+  const [soil, setSoil] = useState(initialSoil);
+  const [season, setSeason] = useState(defaultSeason);
+  const [water, setWater] = useState(profile?.water || 'Adequate / Irrigated');
+  const [irrigation, setIrrigation] = useState(profile?.irrigation || 'Drip / Sprinkler');
+  const [landArea, setLandArea] = useState(profile?.landSize ? Number(profile.landSize) : 3);
+  const [budgetPerAcre, setBudgetPerAcre] = useState(profile?.budget ? Math.round(Number(profile.budget) / (profile.landSize || 1)) : 35000);
+  const [priority, setPriority] = useState('profit'); // 'profit' | 'balanced' | 'drought' | 'duration'
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCrop, setSelectedCrop] = useState(null);
+  const [toastMessage, setToastMessage] = useState('');
+
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 3500);
+  };
+
+  // Multi-Factor Agronomic Recommendation Engine
+  const analyzedCrops = useMemo(() => {
+    return CROP_CATALOG.map((crop) => {
+      // 1. Soil Match (Weight: 35%)
+      const isSoilPrimary = crop.soils.some((s) => s.toLowerCase() === soil.toLowerCase());
+      const soilScore = isSoilPrimary ? 100 : (crop.soils.includes('Loamy') ? 70 : 40);
+
+      // 2. Season Match (Weight: 25%)
+      const isSeasonMatch = crop.seasons.some((s) => s.toLowerCase().startsWith(season.slice(0, 4).toLowerCase()) || s === 'Year-round');
+      const seasonScore = isSeasonMatch ? 100 : 35;
+
+      // 3. Water & Irrigation Match (Weight: 25%)
+      let waterScore = 80;
+      if (water.includes('Scarce') || water.includes('Dryland')) {
+        if (crop.waterReq.includes('Scarce')) waterScore = 100;
+        else if (crop.waterReq.includes('Moderate')) waterScore = 60;
+        else waterScore = 20; // High water crop in scarce conditions
+      } else if (water.includes('Adequate') || water.includes('Irrigated')) {
+        waterScore = 100; // Can grow anything with water
+      } else {
+        // Moderate
+        if (crop.waterReq.includes('Moderate') || crop.waterReq.includes('Scarce')) waterScore = 100;
+        else waterScore = 65;
+      }
+
+      // 4. Budget & Priority Match (Weight: 15%)
+      const budgetRatio = budgetPerAcre / crop.costPerAcre;
+      let budgetScore = budgetRatio >= 1 ? 100 : Math.max(30, Math.round(budgetRatio * 100));
+
+      // Weighted Base Score
+      let baseScore = Math.round(soilScore * 0.35 + seasonScore * 0.25 + waterScore * 0.25 + budgetScore * 0.15);
+
+      // Apply Priority Boosts
+      if (priority === 'profit') {
+        if (crop.netProfitPerAcre >= 60000) baseScore += 6;
+      } else if (priority === 'drought') {
+        if (crop.waterReq.includes('Scarce')) baseScore += 8;
+      } else if (priority === 'duration') {
+        if (crop.durationDays <= 100) baseScore += 8;
+      } else if (priority === 'balanced') {
+        if (crop.risk === 'Low' || crop.risk === 'Very Low') baseScore += 6;
+      }
+
+      const finalScore = Math.min(99, Math.max(35, baseScore));
+
+      // Determine Fit Tier
+      let tier = 'moderate';
+      let tierLabel = 'Moderate / Conditional';
+      let tierColor = '#f59e0b';
+      if (finalScore >= 85) {
+        tier = 'excellent';
+        tierLabel = 'Top Recommended';
+        tierColor = '#22c55e';
+      } else if (finalScore >= 70) {
+        tier = 'good';
+        tierLabel = 'Good Fit';
+        tierColor = '#3b82f6';
+      }
+
+      return {
+        ...crop,
+        score: finalScore,
+        tier,
+        tierLabel,
+        tierColor,
+        isSoilPrimary,
+        isSeasonMatch,
+        totalFarmCost: crop.costPerAcre * landArea,
+        totalFarmRevenue: Math.round(crop.yieldPerAcreNum * crop.unitPrice * landArea),
+        totalFarmNetProfit: crop.netProfitPerAcre * landArea,
+      };
+    })
+    .filter((crop) => {
+      const matchCat = selectedCategory === 'All' || crop.category === selectedCategory;
+      const matchSearch = !searchQuery.trim() ||
+        crop.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        crop.localName.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchCat && matchSearch;
+    })
+    .sort((a, b) => b.score - a.score);
+  }, [soil, season, water, irrigation, landArea, budgetPerAcre, priority, selectedCategory, searchQuery]);
+
+  // Action: Add crop to active farm tracker
+  const handleAddToFarm = (crop) => {
+    const newCrop = {
+      id: crypto.randomUUID(),
+      name: crop.name.split(' (')[0],
+      field: `${soil} Field Plot`,
+      area: Number(landArea),
+      sowingDate: dateToday(),
+      expectedHarvest: new Date(Date.now() + crop.durationDays * 86400000).toISOString().slice(0, 10),
+      variety: 'Recommended high-yield variety',
+      irrigation: irrigation,
+      stageIndex: 0, // Sowing stage
+      health: 'Healthy',
+    };
+    setCrops((existing) => [...existing, newCrop]);
+    showToast(`✓ Added ${newCrop.name} to your active crop tracker!`);
+  };
+
+  // Action: Add calendar planning tasks
+  const handleAddTasks = (crop) => {
+    const prepTask = {
+      id: crypto.randomUUID(),
+      title: `Prepare soil & basal fertilizer for ${crop.name.split(' (')[0]}`,
+      date: dateToday(),
+      done: false,
+      crop: crop.name.split(' (')[0],
+    };
+    const sowTask = {
+      id: crypto.randomUUID(),
+      title: `Sow certified seeds of ${crop.name.split(' (')[0]}`,
+      date: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+      done: false,
+      crop: crop.name.split(' (')[0],
+    };
+    setTasks((existing) => [prepTask, sowTask, ...existing]);
+    showToast(`✓ Added 2 seasonal planning tasks to Farm Calendar!`);
+  };
+
+  const topMatch = analyzedCrops[0];
+
+  return (
+    <div className="m-page m-crop-analyzer-page">
+      <Heading
+        eyebrow="AI Crop Analyzer & Health Diagnosis"
+        title="AI Plant Leaf Diagnosis & Crop Suitability"
+        detail="Scan crop and leaf photographs for instant disease identification and verified organic management, or plan high-yield seasonal crop rotations for your farm."
+      />
+
+      {toastMessage && (
+        <div className="m-analyzer-toast" role="status">
+          {toastMessage}
+        </div>
+      )}
+
+      {/* Mode Switcher Tabs */}
+      <div className="m-analyzer-tabs">
+        <button
+          type="button"
+          className={`m-analyzer-tab-btn ${activeTab === 'image-analyzer' ? 'active' : ''}`}
+          onClick={() => setActiveTab('image-analyzer')}
+        >
+          <span className="m-tab-icon">📷</span>
+          <div>
+            <b>AI Plant & Crop Photo Diagnosis</b>
+            <small>Detect leaf diseases, visual symptoms & organic remedies from photo</small>
+          </div>
+        </button>
+        <button
+          type="button"
+          className={`m-analyzer-tab-btn ${activeTab === 'crop-planner' ? 'active' : ''}`}
+          onClick={() => setActiveTab('crop-planner')}
+        >
+          <span className="m-tab-icon">🌾</span>
+          <div>
+            <b>Seasonal Crop Planner & Economics</b>
+            <small>18-crop suitability engine based on soil, water & profit margin</small>
+          </div>
+        </button>
+      </div>
+
+      {activeTab === 'image-analyzer' && (
+        <>
+          <Card>
+            <div className="m-section-title">
+              <div>
+                <span className="m-eyebrow">Visual Neural Screening</span>
+                <h2>Upload or Capture Plant / Leaf Photo</h2>
+              </div>
+              <span className="m-analyzer-model-badge">
+                🟢 MobileNetV2 Neural Model Active (38 Classes)
+              </span>
+            </div>
+
+            <form className="m-doctor-form" onSubmit={submitImage}>
+              <div className="m-doctor-upload">
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Selected plant preview" />
+                ) : (
+                  <div className="m-doctor-placeholder">
+                    <span>🌱</span>
+                    <b>Capture or upload an affected leaf or plant photograph</b>
+                    <small>For highest accuracy: Take a clear, close, well-lit photo showing both leaf spots and margins in natural daylight.</small>
+                  </div>
+                )}
+                <div className="m-doctor-upload-actions">
+                  <label className="m-button primary">
+                    <span>📁 Choose Image</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(e) => chooseImage(e.target.files?.[0])}
+                    />
+                  </label>
+                  <label className="m-button light">
+                    <span>📷 Take Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => chooseImage(e.target.files?.[0])}
+                    />
+                  </label>
+                  {file && (
+                    <button
+                      type="button"
+                      className="m-plain-action"
+                      onClick={() => {
+                        setFile(null);
+                        setPreviewUrl('');
+                        setDiagnosis(null);
+                      }}
+                    >
+                      ✕ Remove Photo
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+                <label>
+                  <span style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '0.9rem' }}>
+                    Crop Type (Optional)
+                  </span>
+                  <select value={cropName} onChange={(e) => setCropName(e.target.value)}>
+                    <option value="">Auto-detect from image</option>
+                    {supportedCropInfo.crops?.map((c) => (
+                      <option key={c.crop} value={c.crop}>
+                        {c.crop}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '0.9rem' }}>
+                    Field Observation / Note (Optional)
+                  </span>
+                  <input
+                    type="text"
+                    value={observations}
+                    maxLength={800}
+                    placeholder="e.g. Yellowing concentric rings on lower leaves"
+                    onChange={(e) => setObservations(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              {imgError && <p className="m-error" role="alert">{imgError}</p>}
+
+              {loading && (
+                <div className="m-doctor-progress">
+                  <div>
+                    <span>Analyzing plant visual patterns...</span>
+                    <span>{progress}%</span>
+                  </div>
+                  <progress value={progress} max="100" />
+                  <small>Passing through MobileNetV2 38-class PlantVillage neural network and agronomic knowledge base.</small>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <button
+                  type="submit"
+                  className="m-button primary"
+                  disabled={loading || !file}
+                >
+                  {loading ? 'Analyzing Plant Photo...' : '🔍 Analyze Crop Photo'}
+                </button>
+                {diagnosis && (
+                  <button
+                    type="button"
+                    className="m-button light"
+                    onClick={() => {
+                      setFile(null);
+                      setPreviewUrl('');
+                      setDiagnosis(null);
+                    }}
+                  >
+                    Scan Another Leaf
+                  </button>
+                )}
+              </div>
+            </form>
+          </Card>
+
+          {diagnosis && (
+            <DiagnosisReport
+              diagnosis={diagnosis}
+              imageUrl={diagnosis.previewUrl}
+              onClose={() => setDiagnosis(null)}
+            />
+          )}
+
+          <Card>
+            <div className="m-section-title">
+              <div>
+                <span className="m-eyebrow">Best Practices</span>
+                <h2>How to Capture Clear Plant Photos for AI Analysis</h2>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+              <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line)' }}>
+                <b style={{ color: '#86efac' }}>1. Focus on Clear Symptoms</b>
+                <p style={{ fontSize: '0.85rem', color: 'var(--muted)', margin: '4px 0 0' }}>Capture the boundary between diseased and healthy tissue on a single affected leaf.</p>
+              </div>
+              <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line)' }}>
+                <b style={{ color: '#86efac' }}>2. Natural Lighting</b>
+                <p style={{ fontSize: '0.85rem', color: 'var(--muted)', margin: '4px 0 0' }}>Take photos in morning daylight; avoid heavy flash reflections or deep shadows.</p>
+              </div>
+              <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line)' }}>
+                <b style={{ color: '#86efac' }}>3. Steady Camera</b>
+                <p style={{ fontSize: '0.85rem', color: 'var(--muted)', margin: '4px 0 0' }}>Hold your phone 15–25 cm away from the leaf so veins and spot margins stay crisp and in focus.</p>
+              </div>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {activeTab === 'crop-planner' && (
+        <>
+          {/* Farm Conditions Input Panel */}
+          <Card className="m-analyzer-input-card">
+        <div className="m-section-title">
+          <div>
+            <span className="m-eyebrow">Input Farm Parameters</span>
+            <h2>Field & Environmental Conditions</h2>
+          </div>
+          <button
+            type="button"
+            className="m-plain-action"
+            onClick={() => {
+              setSoil(initialSoil);
+              setWater(profile?.water || 'Adequate / Irrigated');
+              setIrrigation(profile?.irrigation || 'Drip / Sprinkler');
+              setLandArea(profile?.landSize ? Number(profile.landSize) : 3);
+              showToast('Reset inputs to your Farm Profile.');
+            }}
+          >
+            ↺ Sync from Profile
+          </button>
+        </div>
+
+        <div className="m-analyzer-form-grid">
+          <label>
+            <span>Soil Type</span>
+            <select value={soil} onChange={(e) => setSoil(e.target.value)}>
+              <option value="Loamy">Loamy soil (Rich & well-drained)</option>
+              <option value="Black">Black soil (Regur / Cotton soil)</option>
+              <option value="Red">Red soil (Iron-rich & permeable)</option>
+              <option value="Alluvial">Alluvial soil (River basin / High fertility)</option>
+              <option value="Clay">Clay soil (Heavy water-holding)</option>
+              <option value="Sandy">Sandy soil (Light & porous)</option>
+              <option value="Laterite">Laterite soil (Acidic & leaching)</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Current / Target Season</span>
+            <select value={season} onChange={(e) => setSeason(e.target.value)}>
+              <option value="Rabi (Winter)">Rabi (Winter · Oct - Mar)</option>
+              <option value="Kharif (Monsoon/Summer)">Kharif (Monsoon · Jun - Oct)</option>
+              <option value="Zaid (Summer)">Zaid (Summer · Mar - Jun)</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Water Availability</span>
+            <select value={water} onChange={(e) => setWater(e.target.value)}>
+              <option value="Adequate / Irrigated">Adequate / Irrigated (Canal/Borewell)</option>
+              <option value="Moderate / Rainfed">Moderate / Rainfed (Good rainfall/ponds)</option>
+              <option value="Scarce / Dryland">Scarce / Dryland (Low rainfall/no borewell)</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Irrigation Method</span>
+            <select value={irrigation} onChange={(e) => setIrrigation(e.target.value)}>
+              <option value="Drip / Sprinkler">Drip / Micro-Sprinkler (Precision)</option>
+              <option value="Canal / Flood">Canal / Furrow / Flood</option>
+              <option value="Rainfed / Tube well">Purely Rainfed / Tube well</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Farm Area (Acres)</span>
+            <input
+              type="number"
+              min="0.25"
+              step="0.25"
+              value={landArea}
+              onChange={(e) => setLandArea(Math.max(0.25, Number(e.target.value) || 1))}
+            />
+          </label>
+
+          <label>
+            <span>Target Budget / Acre (₹)</span>
+            <input
+              type="number"
+              step="5000"
+              min="5000"
+              max="200000"
+              value={budgetPerAcre}
+              onChange={(e) => setBudgetPerAcre(Number(e.target.value) || 20000)}
+            />
+          </label>
+        </div>
+
+        <div className="m-analyzer-priority-row">
+          <span className="m-field-label">Optimization Priority:</span>
+          <div className="m-priority-chips">
+            {[
+              ['profit', '💰 Highest Net Profit & ROI'],
+              ['balanced', '⚖️ Balanced & Low Risk'],
+              ['drought', '🏜️ Drought Hardy / Low Water'],
+              ['duration', '⚡ Fast Cycle (<100 Days)'],
+            ].map(([key, label]) => (
+              <button
+                type="button"
+                key={key}
+                className={`m-priority-chip ${priority === key ? 'active' : ''}`}
+                onClick={() => setPriority(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      {/* Summary Highlight Card */}
+      {topMatch && (
+        <Card className="m-analyzer-hero-card">
+          <div className="m-analyzer-hero-badge">🏆 TOP MATCH FOR YOUR FIELD</div>
+          <div className="m-analyzer-hero-content">
+            <span className="m-analyzer-hero-icon">{topMatch.icon}</span>
+            <div className="m-analyzer-hero-info">
+              <div className="m-analyzer-hero-title">
+                <h3>{topMatch.name}</h3>
+                <small>{topMatch.localName}</small>
+                <span className="m-analyzer-score-pill" style={{ background: topMatch.tierColor }}>
+                  {topMatch.score}% Suitability Score
+                </span>
+              </div>
+              <p>{topMatch.suitabilityReason}</p>
+              <div className="m-analyzer-hero-metrics">
+                <div>
+                  <small>Est. Investment ({landArea} ac)</small>
+                  <b>{money(topMatch.totalFarmCost)}</b>
+                </div>
+                <div>
+                  <small>Expected Net Profit</small>
+                  <b className="m-profit-text">{money(topMatch.totalFarmNetProfit)}</b>
+                </div>
+                <div>
+                  <small>Duration</small>
+                  <b>{topMatch.durationText}</b>
+                </div>
+                <div>
+                  <small>Risk Level</small>
+                  <b>{topMatch.risk}</b>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="m-analyzer-hero-actions">
+            <Button onClick={() => setSelectedCrop(topMatch)}>
+              View Full Agronomic Plan
+            </Button>
+            <Button variant="light" onClick={() => handleAddToFarm(topMatch)}>
+              ＋ Add to My Farm Tracker
+            </Button>
+            <Button variant="light" onClick={() => handleAddTasks(topMatch)}>
+              ▦ Schedule Calendar Tasks
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Filter & Search Bar */}
+      <div className="m-analyzer-toolbar">
+        <div className="m-analyzer-categories">
+          {['All', 'Cereals & Millets', 'Pulses', 'Oilseeds & Cash Crops', 'Vegetables'].map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              className={`m-category-pill ${selectedCategory === cat ? 'active' : ''}`}
+              onClick={() => setSelectedCategory(cat)}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+        <div className="m-analyzer-search">
+          <span>⌕</span>
+          <input
+            type="text"
+            placeholder="Search crop by name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Recommendations Cards Grid */}
+      <div className="m-analyzer-grid">
+        {analyzedCrops.map((crop, index) => (
+          <div key={crop.id} className="m-crop-card">
+            <div className="m-crop-card-header">
+              <div className="m-crop-card-title">
+                <span className="m-crop-card-icon">{crop.icon}</span>
+                <div>
+                  <h4>{crop.name}</h4>
+                  <small>{crop.localName}</small>
+                </div>
+              </div>
+              <div className="m-crop-score-badge" style={{ borderColor: crop.tierColor, color: crop.tierColor }}>
+                <b>{crop.score}%</b>
+                <small>Match</small>
+              </div>
+            </div>
+
+            <div className="m-crop-card-bar">
+              <div className="m-crop-card-fill" style={{ width: `${crop.score}%`, background: crop.tierColor }} />
+            </div>
+
+            <div className="m-crop-card-tags">
+              <span className={`m-tag ${crop.tier}`}>{crop.tierLabel}</span>
+              <span className="m-tag">{crop.category}</span>
+              <span className="m-tag">⏱ {crop.durationText}</span>
+            </div>
+
+            <p className="m-crop-card-reason">{crop.suitabilityReason}</p>
+
+            <div className="m-crop-card-stats">
+              <div>
+                <small>Cost / Acre</small>
+                <b>{money(crop.costPerAcre)}</b>
+              </div>
+              <div>
+                <small>Expected Yield</small>
+                <b>{crop.expectedYield}</b>
+              </div>
+              <div>
+                <small>Net Profit / Acre</small>
+                <b className="m-profit-text">{money(crop.netProfitPerAcre)}</b>
+              </div>
+              <div>
+                <small>Estimated ROI</small>
+                <b>{crop.roi}</b>
+              </div>
+            </div>
+
+            <div className="m-crop-card-footer">
+              <button
+                type="button"
+                className="m-button light"
+                onClick={() => setSelectedCrop(crop)}
+              >
+                Inspect Details →
+              </button>
+              <button
+                type="button"
+                className="m-button primary"
+                onClick={() => handleAddToFarm(crop)}
+                title="Add directly to your active crop tracker"
+              >
+                ＋ Add Crop
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Scientific Crop Rotation Advisory */}
+      <Card className="m-rotation-advisory-card">
+        <div className="m-section-title">
+          <div>
+            <span className="m-eyebrow">Scientific Soil Health Guide</span>
+            <h2>Recommended Crop Rotation & Soil Conservation</h2>
+          </div>
+        </div>
+        <div className="m-rotation-grid">
+          <div className="m-rotation-item">
+            <span className="m-rotation-icon">🔄</span>
+            <div>
+              <b>Cereal - Legume Rotation</b>
+              <p>Following heavy nutrient feeders like Maize, Wheat, or Paddy with nitrogen-fixing pulses (Chickpea, Green Gram, or Pigeon pea) restores 30-40 kg natural atmospheric nitrogen per hectare and reduces synthetic urea dependence.</p>
+            </div>
+          </div>
+          <div className="m-rotation-item">
+            <span className="m-rotation-icon">🛡️</span>
+            <div>
+              <b>Disease Cycle Disruption</b>
+              <p>Never plant tomatoes, chillies, or potatoes consecutively on the same plot. Rotating with non-solanaceous crops (Millets, Maize, or Pulses) breaks soil-borne wilt, nematodes, and fungal spore cycles.</p>
+            </div>
+          </div>
+          <div className="m-rotation-item">
+            <span className="m-rotation-icon">💧</span>
+            <div>
+              <b>Drought & Moisture Management</b>
+              <p>In low rainfall or dryland situations, intercropping Sorghum or Pearl Millet with deep-rooted Pigeon pea provides drought insurance, soil moisture canopy cover, and dual revenue streams.</p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Detailed Crop Modal Drawer */}
+      {selectedCrop && (
+        <div className="m-crop-modal-backdrop" onClick={() => setSelectedCrop(null)}>
+          <div className="m-crop-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="m-crop-modal-header">
+              <div className="m-crop-modal-title">
+                <span className="m-crop-modal-icon">{selectedCrop.icon}</span>
+                <div>
+                  <h2>{selectedCrop.name}</h2>
+                  <p>{selectedCrop.localName} · {selectedCrop.category}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="m-crop-modal-close"
+                onClick={() => setSelectedCrop(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="m-crop-modal-body">
+              {/* Financial Projections Table */}
+              <div className="m-modal-section">
+                <h3>💰 Economic Projections for Your Farm ({landArea} Acres)</h3>
+                <div className="m-economic-table">
+                  <div className="m-econ-row header">
+                    <span>Metric</span>
+                    <span>Per Single Acre</span>
+                    <span>Total for Your Land ({landArea} ac)</span>
+                  </div>
+                  <div className="m-econ-row">
+                    <span>Estimated Cultivation Investment</span>
+                    <b>{money(selectedCrop.costPerAcre)}</b>
+                    <b>{money(selectedCrop.totalFarmCost)}</b>
+                  </div>
+                  <div className="m-econ-row">
+                    <span>Expected Market Yield</span>
+                    <b>{selectedCrop.expectedYield}</b>
+                    <b>{(selectedCrop.yieldPerAcreNum * landArea).toFixed(1)} quintals</b>
+                  </div>
+                  <div className="m-econ-row">
+                    <span>Est. Market Gross Revenue</span>
+                    <b>{money(selectedCrop.yieldPerAcreNum * selectedCrop.unitPrice)}</b>
+                    <b>{money(selectedCrop.totalFarmRevenue)}</b>
+                  </div>
+                  <div className="m-econ-row highlight">
+                    <span>Net Profit Margin (Est.)</span>
+                    <b className="m-profit-text">{money(selectedCrop.netProfitPerAcre)}</b>
+                    <b className="m-profit-text">{money(selectedCrop.totalFarmNetProfit)}</b>
+                  </div>
+                </div>
+              </div>
+
+              {/* Agronomic Recommendations Grid */}
+              <div className="m-modal-section-grid">
+                <div className="m-modal-info-box">
+                  <h4>🧪 NPK Nutrient & Fertilizer Schedule</h4>
+                  <p>{selectedCrop.npkSchedule}</p>
+                </div>
+
+                <div className="m-modal-info-box">
+                  <h4>💧 Critical Irrigation Stages</h4>
+                  <p>{selectedCrop.irrigationCritical}</p>
+                </div>
+
+                <div className="m-modal-info-box">
+                  <h4>🐛 Seasonal Pest & Disease Watch</h4>
+                  <p>{selectedCrop.pestAlert}</p>
+                </div>
+
+                <div className="m-modal-info-box">
+                  <h4>🌿 Companion & Intercropping Advice</h4>
+                  <p>{selectedCrop.companion}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="m-crop-modal-footer">
+              <Button
+                variant="light"
+                onClick={() => {
+                  window.print();
+                }}
+              >
+                ⎙ Print Agronomic Plan
+              </Button>
+              <Button
+                variant="light"
+                onClick={() => {
+                  handleAddTasks(selectedCrop);
+                  setSelectedCrop(null);
+                }}
+              >
+                ▦ Add to Calendar Tasks
+              </Button>
+              <Button
+                onClick={() => {
+                  handleAddToFarm(selectedCrop);
+                  setSelectedCrop(null);
+                  navigate('/crop-growth');
+                }}
+              >
+                ＋ Add to My Farm Tracker & View
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+        </>
+      )}
+    </div>
+  );
 }
+
 
 function CropGrowthPage() {
   const { crops, setCrops, observations, setObservations, language } = useFarm()
@@ -707,10 +2124,9 @@ function DiseasePage() {
     setError('')
     try {
       const diagnosis = await uploadCropImage({ token, file, cropName, observations, onProgress: setProgress })
-      setSelectedDiagnosis(token ? diagnosis : { ...diagnosis, previewUrl })
+      setSelectedDiagnosis({ ...diagnosis, previewUrl })
       setFile(null)
       if (token) {
-        setPreviewUrl('')
         await refreshHistory()
       }
     } catch (requestError) {
@@ -779,9 +2195,41 @@ function DiagnosisReport({ diagnosis, imageUrl, imageError, onClose }) {
   const listSection = (title, items) => items?.length ? <section><h3>{title}</h3><ul>{items.map((item, index) => <li key={`${title}-${index}`}>{item}</li>)}</ul></section> : null
   const uncertain = diagnosis.assessment !== 'identified'
   return <Card className="m-doctor-report">
-    <div className="m-section-title"><div><span className="m-eyebrow">PlantVillage model · {new Date(diagnosis.createdAt).toLocaleString()}</span><h2>Assessment for {diagnosis.plantName}</h2></div><button type="button" className="m-plain-action" onClick={onClose}>Close</button></div>
-    <div className="m-doctor-report-main">{imageUrl ? <img src={imageUrl} alt={`Saved plant photo for ${diagnosis.plantName}`} /> : <span className="m-doctor-image-placeholder">{imageError || 'Loading private image…'}</span>}
-      <div><span className={`m-doctor-severity ${diagnosis.severity}`}>{diagnosis.predictionStatus?.replaceAll('_', ' ') || 'inconclusive'}</span><h3>{diagnosis.diseaseName}</h3><p>Model confidence: <b>{diagnosis.confidence}%</b></p><small>Model v{diagnosis.modelVersion} · not calibrated field accuracy.</small>{diagnosis.message && <p>{diagnosis.message}</p>}</div>
+    <div className="m-section-title">
+      <div>
+        <span className="m-eyebrow">PlantVillage MobileNetV2 Neural Model · {new Date(diagnosis.createdAt).toLocaleString()}</span>
+        <h2>Assessment for {diagnosis.plantName}</h2>
+      </div>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button type="button" className="m-button light" style={{ padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => window.print()}>
+          🖨️ Print Report
+        </button>
+        <button type="button" className="m-plain-action" onClick={onClose}>Close</button>
+      </div>
+    </div>
+    <div className="m-doctor-report-main">
+      {imageUrl ? <img src={imageUrl} alt={`Saved plant photo for ${diagnosis.plantName}`} /> : <span className="m-doctor-image-placeholder">{imageError || 'Plant Photo'}</span>}
+      <div>
+        <span className={`m-doctor-severity ${diagnosis.severity}`}>{diagnosis.predictionStatus?.replaceAll('_', ' ') || 'inconclusive'}</span>
+        <h3>{diagnosis.diseaseName}</h3>
+        <div className="m-confidence-bar-container">
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem' }}>
+            <span>Model Confidence</span>
+            <b>{diagnosis.confidence}%</b>
+          </div>
+          <div className="m-confidence-bar-track">
+            <div
+              className={`m-confidence-bar-fill ${diagnosis.confidence >= 55 ? 'high' : diagnosis.confidence >= 25 ? 'moderate' : 'low'}`}
+              style={{ width: `${Math.min(100, Math.max(12, diagnosis.confidence))}%` }}
+            />
+          </div>
+          <small style={{ color: 'var(--muted)' }}>
+            {diagnosis.confidence >= 55 ? 'High confidence pattern match' : diagnosis.confidence >= 25 ? 'Moderate confidence visual pattern match' : 'Visual screening match'}
+          </small>
+        </div>
+        <small>Model v{diagnosis.modelVersion} · PlantVillage 38-class classifier</small>
+        {diagnosis.message && <p style={{ margin: '8px 0 0', fontSize: '0.88rem' }}>{diagnosis.message}</p>}
+      </div>
     </div>
     {uncertain && <p className="m-doctor-uncertain" role="status">The image did not provide enough evidence for a reliable disease assessment. Try a close, well-lit photo of one affected leaf and a second photo of the whole plant.</p>}
     <div className="m-doctor-report-grid">
@@ -806,7 +2254,7 @@ function DiagnosisReport({ diagnosis, imageUrl, imageError, onClose }) {
 }
 
 function SoilWaterPage() {
-  const { profile, crops } = useFarmData()
+  const { profile, crops } = useFarm()
   const token = localStorage.getItem(CHAT_TOKEN_KEY) || ''
   const [soilStatus, setSoilStatus] = useState({ model_loaded: false, message: 'Checking soil model…' })
   const [soilAnalyses, setSoilAnalyses] = useState([])

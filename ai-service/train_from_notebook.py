@@ -10,6 +10,12 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Configure CPU execution and suppress verbose oneDNN/CUDA warnings on Windows
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+if os.name == "nt" and "CUDA_VISIBLE_DEVICES" not in os.environ:
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
@@ -24,8 +30,14 @@ SEED = 42
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument(
+        "--max-samples-per-class",
+        type=int,
+        default=75,
+        help="Maximum images per class to train efficiently on CPU (0 for all)",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_MODEL_DIRECTORY)
     args = parser.parse_args()
     if args.epochs < 1:
@@ -35,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def prepare_datasets(batch_size: int):
+def prepare_datasets(batch_size: int, max_samples_per_class: int = 75):
     builder = tfds.builder("plant_village")
     info = builder.info
     class_names = info.features["label"].names
@@ -79,6 +91,9 @@ def prepare_datasets(batch_size: int):
             if path.is_file() and path.suffix.casefold() in {".jpg", ".jpeg", ".png"}
         )
         random_generator.shuffle(image_paths)
+        if max_samples_per_class > 0 and len(image_paths) > max_samples_per_class:
+            image_paths = image_paths[:max_samples_per_class]
+
         train_end = int(len(image_paths) * 0.70)
         validation_end = train_end + int(len(image_paths) * 0.15)
         class_train = image_paths[:train_end]
@@ -213,9 +228,15 @@ def export_model(
     try:
         staged_model = staging_directory / "plant_disease_model.keras"
         model.save(staged_model)
+
+        # Write labels as integer-keyed dictionary compatible with all loaders
+        mapping = {str(index): name for index, name in enumerate(class_names)}
         labels_path = staging_directory / "class_labels.json"
-        labels_path.write_text(json.dumps(class_names, indent=2), encoding="utf-8")
+        labels_path.write_text(json.dumps(mapping, indent=2), encoding="utf-8")
+
+        supported_crops = sorted({name.partition("___")[0].replace("_", " ").replace(",", "").strip() for name in class_names})
         metadata = {
+            "status": "trained",
             "model_name": model.name,
             "architecture": "MobileNetV2 transfer learning",
             "dataset": "plant_village",
@@ -223,12 +244,15 @@ def export_model(
             "input_size": list(IMAGE_SIZE),
             "color_mode": "RGB",
             "preprocessing": "RGB float32 pixels in [0,255]; MobileNetV2 [-1,1] normalization is embedded in the model.",
+            "supported_crops": supported_crops,
             "class_count": len(class_names),
             "classes": class_names,
             "split_counts": split_counts,
             "class_split_counts": class_split_counts,
             "evaluation_metrics": metrics,
             "epochs_requested": epochs,
+            "confidence_threshold": 0.65,
+            "top_prediction_margin_threshold": 0.12,
             "model_version": datetime.now(timezone.utc).strftime("plantvillage-%Y%m%dT%H%M%SZ"),
             "trained_at": datetime.now(timezone.utc).isoformat(),
             "seed": SEED,
@@ -251,8 +275,13 @@ def export_model(
             raise ValueError("Exported model output count does not match the class-label count.")
 
         for filename in ("plant_disease_model.keras", "class_labels.json", "model_metadata.json"):
-            os.replace(staging_directory / filename, output_directory / filename)
-        (output_directory / "training_metrics.json").write_text(
+            target_path = output_directory / filename
+            if target_path.exists():
+                target_path.unlink()
+            shutil.move(str(staging_directory / filename), str(target_path))
+
+        metrics_path = output_directory / "training_metrics.json"
+        metrics_path.write_text(
             json.dumps(metrics, indent=2),
             encoding="utf-8",
         )
@@ -270,7 +299,10 @@ def main() -> None:
     print(f"TensorFlow: {tf.__version__}", flush=True)
     print(f"TensorFlow Datasets: {tfds.__version__}", flush=True)
     print(f"Training device(s): {tf.config.list_physical_devices()}", flush=True)
-    print("Preparing stratified PlantVillage train/validation/test splits.", flush=True)
+    print(
+        f"Preparing stratified PlantVillage train/validation/test splits (max {args.max_samples_per_class} per class).",
+        flush=True,
+    )
     (
         train_data,
         validation_data,
@@ -279,7 +311,7 @@ def main() -> None:
         split_counts,
         class_split_counts,
         info,
-    ) = prepare_datasets(args.batch_size)
+    ) = prepare_datasets(args.batch_size, args.max_samples_per_class)
     print(f"Dataset version: {info.version}", flush=True)
     print(f"Classes ({len(class_names)}): {class_names}", flush=True)
     print(f"Split sizes: {split_counts}", flush=True)

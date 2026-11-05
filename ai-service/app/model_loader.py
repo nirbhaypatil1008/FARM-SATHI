@@ -3,9 +3,30 @@ import os
 from pathlib import Path
 from typing import Any
 
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+if os.name == "nt" and "CUDA_VISIBLE_DEVICES" not in os.environ:
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[1] / "models"
-MODEL_DIR = Path(os.getenv("MODEL_DIR", str(DEFAULT_MODEL_DIR))).resolve()
+SERVICE_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_MODEL_DIR = SERVICE_DIR / "models"
+
+configured_dir = os.getenv("MODEL_DIR")
+if configured_dir:
+    candidate = Path(configured_dir)
+    if candidate.is_absolute() and candidate.is_dir():
+        MODEL_DIR = candidate
+    elif (candidate / "plant_disease_model.keras").is_file():
+        MODEL_DIR = candidate.resolve()
+    elif ((SERVICE_DIR / candidate) / "plant_disease_model.keras").is_file():
+        MODEL_DIR = (SERVICE_DIR / candidate).resolve()
+    elif (SERVICE_DIR / candidate).is_dir():
+        MODEL_DIR = (SERVICE_DIR / candidate).resolve()
+    else:
+        MODEL_DIR = candidate.resolve()
+else:
+    MODEL_DIR = DEFAULT_MODEL_DIR.resolve()
+
 MODEL_FILENAME = "plant_disease_model.keras"
 LABELS_FILENAME = "class_labels.json"
 METADATA_FILENAME = "model_metadata.json"
