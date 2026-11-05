@@ -6,6 +6,7 @@
 |---|---|---|
 | Google Gemini Developer API | Farming chat and streamed replies only | `GEMINI_API_KEY` in `server/.env` |
 | TensorFlow/Keras MobileNetV2 | PlantVillage crop/disease image classification through the local FastAPI service | No API key; trained model files in `ai-service/models/` |
+| Separate TensorFlow/Keras MobileNetV2 | Soil Vision visual classification, only after the supplied trained model is installed | No API key; `ai-service/models/soil/soil_visual_model.keras` and `soil_labels.json` |
 | Open-Meteo Geocoding and Forecast APIs | Location search and current/seven-day weather | No key configured; browser requests |
 | Browser Web Speech APIs | Voice input and spoken chat replies where supported | No app key; browser/device permission and installed voices |
 | SQLite | Local account, chat, and private diagnosis history | `DATABASE_PATH` in `server/.env` |
@@ -45,7 +46,7 @@ npm run dev:all
 
 The web app is at `http://localhost:5173`, the Express API at `http://localhost:5000`, and the AI service at `http://127.0.0.1:8000`. Vite proxies `/api` requests to Express. The backend defaults `AI_SERVICE_URL` to `http://127.0.0.1:8000`; change it in `server/.env` only when the AI service is at another trusted internal address. Do not expose the model service directly to the public internet.
 
-Without model weights, Crop Doctor stays disabled and explains that the model must be trained/installed. Without a Gemini key, authentication, local history, and Crop Doctor still work; chat reports a useful missing-key error. The Node backend refuses a missing or placeholder JWT secret in production.
+Without model weights, Crop Doctor and Soil Vision independently report the relevant model unavailable and do not produce predictions. Without a Gemini key, authentication and local history still work; chat reports a useful missing-key error. The Node backend refuses a missing or placeholder JWT secret in production.
 
 ## Gemini API — farming chat only
 
@@ -59,7 +60,7 @@ Pricing, quotas, model availability, and data handling vary by account, region, 
 
 ## Crop Doctor — PlantVillage MobileNetV2
 
-The frontend uploads images to authenticated Express routes. Express validates the file, applies a six-analysis-per-minute rate limit, and forwards it to the private FastAPI service. FastAPI validates and preprocesses JPG/JPEG, PNG, or WEBP images (5 MB maximum), then runs the exported MobileNetV2 classifier. Diagnoses and generated image filenames are stored in the existing SQLite `crop_diagnoses` table; files are stored outside the public web root in `server/data/crop-diagnoses/`. History, image access, and deletion are scoped to the signed-in farmer.
+The frontend uploads images to Express routes. Farmers can use the guest preview without signing in; preview images and results are not saved. Signed-in uploads use the authenticated route and save history in SQLite. Express validates the file, rate-limits image analysis, and forwards it to the private FastAPI service. FastAPI validates and preprocesses JPG/JPEG, PNG, or WEBP images (5 MB maximum), then runs the exported MobileNetV2 classifier. Saved diagnoses and generated image filenames are stored in the existing SQLite `crop_diagnoses` table; files are stored outside the public web root in `server/data/crop-diagnoses/`. Saved history, image access, and deletion are scoped to the signed-in farmer.
 
 The model recognizes the 38 classes for 14 crops in the PlantVillage color dataset. An optional crop selection is checked against the prediction; a mismatch is marked inconclusive rather than accepted. Low-confidence, close-ranked, unsupported, or blurry images are reported as inconclusive. The model's score is not calibrated field accuracy. No disease-specific treatment guidance is displayed unless a future knowledge-base entry has a source and verification date; no pesticide dosage is generated. Private farmer notes are saved with the report but are not sent to or used by the classifier.
 
@@ -75,12 +76,37 @@ Invoke-RestMethod http://127.0.0.1:8000/api/disease/supported-crops
 `modelLoaded` must be `true` before predictions can run. Authenticated application routes:
 
 - `GET /api/crop-doctor/supported-crops` — model status and available crop classes.
+- `POST /api/crop-doctor/preview` — guest multipart image analysis, no saved report or image.
 - `POST /api/crop-doctor/diagnose` — multipart `image`, optional `cropName`, and optional private `observations`.
 - `GET /api/crop-doctor/history` — the farmer's latest 100 diagnoses.
 - `GET /api/crop-doctor/history/:id/image` — an owned image.
 - `DELETE /api/crop-doctor/history/:id` — delete an owned diagnosis and its image.
 
 These are internal application routes, not external provider APIs. No model-serving API key is required. The model runs locally; image bytes are not sent to Gemini or a third-party inference API.
+
+## Soil Vision — separate soil image model
+
+Soil Vision is a separate model runtime and authenticated upload flow; it does not share the PlantVillage weights. The expected model and exact class-order file are:
+
+```text
+ai-service/models/soil/soil_visual_model.keras
+ai-service/models/soil/soil_labels.json
+```
+
+No soil weights or label file are included in this repository, so live soil inference cannot be tested until the genuine files are supplied. Do not substitute disease-model files. See [SOIL_MODEL_SETUP.md](./SOIL_MODEL_SETUP.md) for the model contract, preprocessing configuration, Windows/WSL commands, and installation checks.
+
+The FastAPI service loads the soil model independently at startup and reports readiness via `GET /api/soil/status`; general `GET /health` also reports disease and soil readiness separately. FastAPI's `POST /api/soil/predict` expects multipart `file`. Authenticated Express routes are:
+
+- `GET /api/soil/status` — readiness, model name/version, and class count.
+- `POST /api/soil/preview` — guest multipart `image` analysis without saving a result or image.
+- `POST /api/soil/analyze` — multipart `image`, optional `cropName`, and optional `location`.
+- `GET /api/soil/history` — this farmer's latest 100 saved analyses.
+- `GET /api/soil/history/:id` — an owned saved result.
+- `GET /api/soil/history/:id` — an owned saved result.
+- `GET /api/soil/history/:id/image` — an owned private image.
+- `DELETE /api/soil/history/:id` — delete an owned analysis and its image.
+
+The result includes the model's actual class scores, the unmodified predicted label, a confidence score, and model metadata where supplied. Scores are not calibrated field accuracy. A photograph cannot measure soil pH, NPK, electrical conductivity, organic carbon, salinity, or actual moisture; it cannot establish that a crop is suitable. The interface provides lab-test next steps only, not fabricated nutrient or fertilizer recommendations. Crop/location selections are saved as farmer-provided context and are not represented as model features.
 
 ## Weather
 
@@ -94,10 +120,10 @@ Check current attribution, usage, and pricing terms for your deployment. Forecas
 
 ## Authentication, chat, and voice
 
-The Express API validates requests, rate-limits auth/chat routes, hashes passwords with Node's scrypt, signs JWTs, and scopes conversation/diagnosis queries to the authenticated user.
+The Express API validates requests, rate-limits auth/chat and image-analysis routes, hashes passwords with Node's scrypt, signs JWTs, and scopes saved conversation/diagnosis queries to the authenticated user. Assistant chat and Crop Doctor/Soil Vision image previews do not require a login. Guest content stays in the current page and is not saved; signing in is needed only for account-owned saved history.
 
 - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
-- `POST /api/chat`, `POST /api/chat/stream`
+- `POST /api/chat`, `POST /api/chat/stream` — available without sign-in; guest conversations are not stored and are rate-limited.
 - `GET /api/chat/history`, `POST /api/chat/new`, `DELETE /api/chat/history/:id`
 - `GET /api/health`
 

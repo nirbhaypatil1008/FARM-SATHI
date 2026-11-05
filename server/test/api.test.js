@@ -59,6 +59,14 @@ function cropImageForm({ buffer, mime = 'image/png', filename = 'plant.png' }) {
   return form
 }
 
+function soilImageForm({ buffer, mime = 'image/png', filename = 'soil.png' }) {
+  const form = new FormData()
+  form.set('cropName', 'Tomato')
+  form.set('location', 'Mandya')
+  form.set('image', new Blob([buffer], { type: mime }), filename)
+  return form
+}
+
 async function withAiServiceResponse(body, status, run) {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (input, options) => {
@@ -97,6 +105,13 @@ test('registration, login, protected history, and Gemini-missing error work', as
 
   const unauthenticated = await request('/api/chat/history')
   assert.equal(unauthenticated.status, 401)
+
+  const guestStream = await request('/api/chat/stream', {
+    method: 'POST',
+    body: JSON.stringify({ message: 'How do I care for tomatoes?', history: [] }),
+  })
+  assert.equal(guestStream.status, 200)
+  assert.match(await guestStream.text(), /event: error/)
 
   const login = await request('/api/auth/login', {
     method: 'POST',
@@ -265,6 +280,17 @@ test('Crop Doctor validates the model response and saves a private diagnosis his
   const removed = await request(`/api/crop-doctor/history/${diagnosis.id}`, { method: 'DELETE', token })
   assert.equal(removed.status, 204)
 
+  const savedCount = database.prepare('SELECT COUNT(*) AS count FROM crop_diagnoses').get().count
+  const guestPreview = await withAiServiceResponse(modelResult, 200, () => request('/api/crop-doctor/preview', {
+    method: 'POST',
+    body: cropImageForm({ buffer: png }),
+  }))
+  assert.equal(guestPreview.status, 200)
+  const guestDiagnosis = (await guestPreview.json()).diagnosis
+  assert.equal(guestDiagnosis.diseaseName, 'Early blight')
+  assert.equal(guestDiagnosis.id, undefined)
+  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM crop_diagnoses').get().count, savedCount)
+
   const invalidModelResponse = await withAiServiceResponse({}, 200, () => request('/api/crop-doctor/diagnose', {
     method: 'POST',
     token,
@@ -272,6 +298,125 @@ test('Crop Doctor validates the model response and saves a private diagnosis his
   }))
   assert.equal(invalidModelResponse.status, 502)
   assert.match((await invalidModelResponse.json()).error, /invalid response/)
+})
+
+test('Soil Vision rejects unauthenticated, unsupported, malformed, and unavailable-model uploads', async () => {
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  const unauthenticated = await request('/api/soil/analyze', {
+    method: 'POST',
+    body: soilImageForm({ buffer: pngSignature }),
+  })
+  assert.equal(unauthenticated.status, 401)
+
+  const token = await createAccount('Soil Image Farmer')
+  const unsupported = await request('/api/soil/analyze', {
+    method: 'POST',
+    token,
+    body: soilImageForm({ buffer: Buffer.from('not an image'), mime: 'text/plain', filename: 'notes.txt' }),
+  })
+  assert.equal(unsupported.status, 400)
+  assert.match((await unsupported.json()).error, /JPG, PNG, or WEBP/)
+
+  const malformed = await request('/api/soil/analyze', {
+    method: 'POST',
+    token,
+    body: soilImageForm({ buffer: Buffer.from('not really a png') }),
+  })
+  assert.equal(malformed.status, 400)
+  assert.match((await malformed.json()).error, /valid image/)
+
+  const unavailable = await withAiServiceResponse(
+    { detail: 'Soil model is not installed.' },
+    503,
+    () => request('/api/soil/analyze', {
+      method: 'POST',
+      token,
+      body: soilImageForm({ buffer: pngSignature }),
+    }),
+  )
+  assert.equal(unavailable.status, 503)
+  assert.match((await unavailable.json()).error, /Soil model is not installed/)
+  assert.deepEqual((await (await request('/api/soil/history', { token })).json()).analyses, [])
+})
+
+test('Soil Vision forwards real-shaped predictions and scopes saved history and images to each farmer', async () => {
+  const ownerToken = await createAccount('Soil Analysis Owner')
+  const otherToken = await createAccount('Another Soil Farmer')
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  const modelResult = {
+    success: true,
+    predicted_class: 'Type 2',
+    confidence: 0.82,
+    probabilities: { 'Type 1': 0.1, 'Type 2': 0.82, 'Type 3': 0.08 },
+    model_ready: true,
+    analysis_type: 'visual_soil_classification',
+    model_name: 'MobileNetV2',
+    model_version: 'soil-model-test',
+    status: 'possible_detection',
+    message: 'Possible visual match to a dataset class.',
+    limitations: ['Image classification cannot measure exact pH or NPK.'],
+    top_predictions: [
+      { soilCategory: 'Type 2', confidence: 0.82 },
+      { soilCategory: 'Type 1', confidence: 0.1 },
+      { soilCategory: 'Type 3', confidence: 0.08 },
+    ],
+    visual_characteristics: [],
+  }
+  const response = await withAiServiceResponse(modelResult, 200, () => request('/api/soil/analyze', {
+    method: 'POST',
+    token: ownerToken,
+    body: soilImageForm({ buffer: pngSignature }),
+  }))
+  assert.equal(response.status, 201)
+  const { analysis } = await response.json()
+  assert.equal(analysis.predicted_class, 'Type 2')
+  assert.equal(analysis.probabilities['Type 2'], 0.82)
+  assert.equal(analysis.cropName, 'Tomato')
+  assert.equal(analysis.location, 'Mandya')
+
+  const storedCount = database.prepare('SELECT COUNT(*) AS count FROM soil_analyses').get().count
+  const guestPreview = await withAiServiceResponse(modelResult, 200, () => request('/api/soil/preview', {
+    method: 'POST',
+    body: soilImageForm({ buffer: pngSignature }),
+  }))
+  assert.equal(guestPreview.status, 200)
+  const guestAnalysis = (await guestPreview.json()).analysis
+  assert.equal(guestAnalysis.predicted_class, 'Type 2')
+  assert.equal(guestAnalysis.id, undefined)
+  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM soil_analyses').get().count, storedCount)
+
+  const ownerHistory = await request('/api/soil/history', { token: ownerToken })
+  const analyses = (await ownerHistory.json()).analyses
+  assert.equal(analyses.length, 1)
+  assert.equal(analyses[0].id, analysis.id)
+  const ownerImage = await request(`/api/soil/history/${analysis.id}/image`, { token: ownerToken })
+  assert.equal(ownerImage.status, 200)
+  const ownerDetail = await request(`/api/soil/history/${analysis.id}`, { token: ownerToken })
+  assert.equal((await ownerDetail.json()).analysis.predicted_class, 'Type 2')
+
+  assert.deepEqual((await (await request('/api/soil/history', { token: otherToken })).json()).analyses, [])
+  assert.equal((await request(`/api/soil/history/${analysis.id}`, { token: otherToken })).status, 404)
+  assert.equal((await request(`/api/soil/history/${analysis.id}/image`, { token: otherToken })).status, 404)
+  assert.equal((await request(`/api/soil/history/${analysis.id}`, { method: 'DELETE', token: otherToken })).status, 404)
+  assert.equal((await request(`/api/soil/history/${analysis.id}`, { method: 'DELETE', token: ownerToken })).status, 204)
+})
+
+test('Soil Vision status proxy reports readiness and rejects malformed AI-service responses', async () => {
+  const status = await withAiServiceResponse(
+    { model_loaded: false, model_name: 'MobileNetV2', model_version: null, class_count: 0, message: 'Soil model is missing.' },
+    200,
+    () => request('/api/soil/status'),
+  )
+  assert.equal(status.status, 200)
+  assert.equal((await status.json()).model_loaded, false)
+
+  const invalid = await withAiServiceResponse(
+    { model_loaded: 'yes' },
+    200,
+    () => request('/api/soil/status'),
+  )
+  assert.equal(invalid.status, 502)
+  assert.match((await invalid.json()).error, /invalid soil readiness/)
 })
 
 test('Crop Doctor history, images, and deletion are scoped to the authenticated farmer', async () => {

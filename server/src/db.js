@@ -42,7 +42,21 @@ database.exec(`
     result_json TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
   );
+  CREATE TABLE IF NOT EXISTS soil_analyses (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    crop_name TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    image_filename TEXT NOT NULL,
+    image_mime_type TEXT NOT NULL,
+    predicted_class TEXT,
+    confidence REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
+    model_version TEXT,
+    result_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+  );
   CREATE INDEX IF NOT EXISTS messages_conversation_created_idx ON messages(conversation_id, created_at);
   CREATE INDEX IF NOT EXISTS conversations_user_updated_idx ON conversations(user_id, updated_at);
   CREATE INDEX IF NOT EXISTS crop_diagnoses_user_created_idx ON crop_diagnoses(user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS soil_analyses_user_created_idx ON soil_analyses(user_id, created_at DESC);
 `)

@@ -48,6 +48,12 @@ export function authenticate(req, res, next) {
   }
 }
 
+export function authenticateOptional(req, res, next) {
+  const value = req.get('authorization') || ''
+  if (!value) return next()
+  return authenticate(req, res, next)
+}
+
 export async function register(req, res, next) {
   const parsed = credentialsSchema.extend({ name: z.string().trim().min(2).max(80) }).safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'Enter your name, a valid email, and a password of at least 10 characters.', details: parsed.error.flatten().fieldErrors })

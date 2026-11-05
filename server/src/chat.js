@@ -8,6 +8,10 @@ const messageSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   context: z.record(z.string(), z.unknown()).default({}),
   language: z.enum(['en', 'kn', 'hi', 'ta', 'te', 'mr']).default('en'),
+  history: z.array(z.object({
+    role: z.enum(['user', 'model']),
+    content: z.string().min(1).max(4000),
+  })).max(20).default([]),
 })
 const historyContextSchema = z.object({
   conversationId: z.string().uuid().optional(),
@@ -65,14 +69,15 @@ function parseRequest(body) {
 export async function chat(req, res, next) {
   try {
     const input = parseRequest(req.body)
-    const conversationId = ensureConversation(req.user.id, input.conversationId, input.message)
-    const recent = savedHistory(conversationId)
+    const userId = req.user?.id
+    const conversationId = userId ? ensureConversation(userId, input.conversationId, input.message) : undefined
+    const recent = conversationId ? savedHistory(conversationId) : input.history
     const isRetry = recent.at(-1)?.role === 'user' && recent.at(-1).content === input.message
     const history = isRetry ? recent.slice(0, -1) : recent
-    if (!isRetry) saveMessage(conversationId, 'user', input.message)
+    if (!isRetry && conversationId) saveMessage(conversationId, 'user', input.message)
     const reply = await generateReply({ history, message: input.message, context: { ...input.context, selectedLanguage: input.language } })
-    saveMessage(conversationId, 'model', reply)
-    return res.json({ conversationId, reply })
+    if (conversationId) saveMessage(conversationId, 'model', reply)
+    return res.json({ ...(conversationId ? { conversationId } : {}), reply })
   } catch (error) {
     return next(error)
   }
@@ -83,12 +88,13 @@ export async function streamChat(req, res, next) {
   let userMessage
   try {
     const input = parseRequest(req.body)
-    conversationId = ensureConversation(req.user.id, input.conversationId, input.message)
-    const recent = savedHistory(conversationId)
+    const userId = req.user?.id
+    conversationId = userId ? ensureConversation(userId, input.conversationId, input.message) : randomUUID()
+    const recent = userId ? savedHistory(conversationId) : input.history
     const isRetry = recent.at(-1)?.role === 'user' && recent.at(-1).content === input.message
     const history = isRetry ? recent.slice(0, -1) : recent
     userMessage = input.message
-    if (!isRetry) saveMessage(conversationId, 'user', userMessage)
+    if (!isRetry && userId) saveMessage(conversationId, 'user', userMessage)
     res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
     res.flushHeaders()
     res.write(`event: conversation\ndata: ${JSON.stringify({ conversationId })}\n\n`)
@@ -97,7 +103,7 @@ export async function streamChat(req, res, next) {
       reply += chunk
       res.write(`event: delta\ndata: ${JSON.stringify({ text: chunk })}\n\n`)
     }
-    saveMessage(conversationId, 'model', reply)
+    if (userId) saveMessage(conversationId, 'model', reply)
     res.write(`event: done\ndata: ${JSON.stringify({ conversationId })}\n\n`)
     return res.end()
   } catch (error) {

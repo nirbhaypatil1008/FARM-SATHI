@@ -179,6 +179,9 @@ export async function diagnoseCrop(req, res, next) {
       professionalHelp: [],
       knowledge: prediction.knowledge,
     }
+    if (!req.user) {
+      return res.json({ diagnosis: { ...result, createdAt: new Date().toISOString() } })
+    }
     const id = randomUUID()
     savedFilename = `${id}.${input.extension}`
     await fs.promises.writeFile(path.join(imageDirectory, savedFilename), req.file.buffer, { flag: 'wx', mode: 0o600 })

@@ -13,30 +13,51 @@ from .image_validator import ImageValidationError, MAX_IMAGE_BYTES, validate_and
 from .model_loader import runtime
 from .predictor import predict, supported_crops
 from .schemas import PredictionResponse
+from .soil_model_loader import SOIL_PREPROCESSING, soil_runtime
+from .soil_predictor import predict_soil
+from .soil_report_ocr import extract_measurements
+from .soil_schemas import SoilPredictionResponse
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     runtime.load()
+    soil_runtime.load()
     yield
 
 
 app = FastAPI(
-    title="Farm Saathi Plant Disease Model",
+    title="Farm Saathi local AI service",
     version="1.0.0",
-    description="Local MobileNetV2 PlantVillage inference service. Not a confirmed diagnosis.",
+    description="Separate local MobileNetV2 services for plant-disease and generic soil-image classification.",
     lifespan=lifespan,
 )
 
 
 @app.get("/health")
 def health():
+    disease_ready = runtime.ready
+    soil_ready = soil_runtime.ready
     return {
-        "status": "ok",
-        "modelLoaded": runtime.ready,
+        "status": "healthy" if disease_ready and soil_ready else "degraded",
+        "service": "farm-saathi-ai",
+        "modelLoaded": disease_ready,
         "modelVersion": runtime.metadata.get("model_version") if runtime.ready else None,
         "supportedCropCount": len(supported_crops(runtime.labels)),
         "message": "" if runtime.ready else runtime.error,
+        "models": {
+            "disease": {
+                "loaded": disease_ready,
+                "version": runtime.metadata.get("model_version") if disease_ready else None,
+                "message": "" if disease_ready else runtime.error,
+            },
+            "soil": {
+                "loaded": soil_ready,
+                "version": soil_runtime.metadata.get("model_version") if soil_ready else None,
+                "supportedClassCount": len(soil_runtime.labels),
+                "message": "" if soil_ready else soil_runtime.error,
+            },
+        },
     }
 
 
@@ -51,6 +72,18 @@ def get_supported_crops():
         "modelLoaded": runtime.ready,
         "message": "" if runtime.ready else runtime.error,
         "crops": supported_crops(runtime.labels),
+    }
+
+
+@app.get("/api/soil/status")
+def get_soil_status():
+    return {
+        "model_loaded": soil_runtime.ready,
+        "model_name": str(soil_runtime.metadata.get("model_name", "MobileNetV2")),
+        "model_version": soil_runtime.metadata.get("model_version") if soil_runtime.ready else None,
+        "class_count": len(soil_runtime.labels),
+        "preprocessing": soil_runtime.metadata.get("preprocessing", SOIL_PREPROCESSING),
+        "message": "" if soil_runtime.ready else soil_runtime.error,
     }
 
 
@@ -77,3 +110,45 @@ async def predict_disease(
         return predict(validated, crop_name, runtime)
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.post("/api/soil/predict", response_model=SoilPredictionResponse)
+async def predict_soil_image(
+    file: UploadFile = File(...),
+):
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Choose a JPG, PNG, or WEBP soil image.")
+    raw_image = await file.read(MAX_IMAGE_BYTES + 1)
+    if len(raw_image) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Choose an image smaller than 5 MB.")
+    try:
+        validated = validate_and_preprocess_image(raw_image)
+    except ImageValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if not soil_runtime.ready:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{soil_runtime.error} Train and install the separate Soil Vision model.",
+        )
+    try:
+        return predict_soil(validated, soil_runtime)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.post("/api/soil/report/extract")
+async def extract_soil_report(file: UploadFile = File(...)):
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Choose a JPG, PNG, or WEBP soil-report image.")
+    raw_image = await file.read(MAX_IMAGE_BYTES + 1)
+    if len(raw_image) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Choose an image smaller than 5 MB.")
+    try:
+        validate_and_preprocess_image(raw_image)
+        return extract_measurements(raw_image)
+    except ImageValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

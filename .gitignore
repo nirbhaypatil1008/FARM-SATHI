@@ -19,7 +19,7 @@ server/data/
 server/*.sqlite
 server/*.sqlite-shm
 server/*.sqlite-wal
-ai-service/models/*.keras
+*.keras
 __pycache__/
 *.py[cod]
 .venv/

@@ -19,16 +19,17 @@ npm run dev
 - Editable sample farmer dashboard, local profile, crops/stages/observations, crop planning, calendar, expenses and budget.
 - Live seven-day weather from Open-Meteo (internet required, no key needed).
 - Express API with SQLite accounts and conversation history, scrypt password hashes, JWT auth, request validation, rate limiting, and protected history.
-- Gemini context-aware chat with server-sent event streaming, saved conversations, new/delete, retry, and copy controls.
-- Authenticated Crop Doctor with a MobileNetV2 PlantVillage classifier through a local FastAPI service, private SQLite diagnosis history, validated image uploads, and ownership-checked image access. The model weights must be trained in Colab and installed; no fake or Gemini-fallback predictions are returned.
+- Gemini context-aware chat with guest access, server-sent event streaming, and in-page conversation state; signed-in users can save conversations.
+- Crop Doctor with guest image previews and optional authenticated, private SQLite diagnosis history using the MobileNetV2 PlantVillage classifier through the local FastAPI service. Guest reports are not saved. The model weights must be trained in Colab and installed; no fake or Gemini-fallback predictions are returned.
+- Soil Vision with guest image previews, an independent MobileNetV2 model contract, optional authenticated private analysis history, class-score visualization, and clear lab-test limitations. Guest reports are not saved. Install the supplied trained model in `ai-service/models/`; predictions stay disabled until it is present.
 - Browser-native speech recognition and speech output with language selector, microphone permission/error messaging, pause/resume and stop. Actual language availability depends on the browser and installed voices.
 - Official external portal links for schemes, crop insurance and mandi data; these features are not represented as connected feeds.
 
-Farm profile and crop records stay in this browser. Chat and Crop Doctor account data/history are stored in the local backend SQLite file; crop images are saved under the ignored `server/data/` directory. Crop images are forwarded to the local AI service, not to Gemini or another hosted inference provider. PlantVillage images are predominantly controlled-condition photos, and model confidence is not calibrated field accuracy. Do not store sensitive identity or financial-account details. This is a local development MVP, not a production deployment.
+Farm profile and crop records stay in this browser. Chat, Crop Doctor, and Soil Vision account data/history are stored in the local backend SQLite file; private analysis images are saved under the ignored `server/data/` directory. Crop and soil images are forwarded to the local AI service, not to Gemini or another hosted inference provider. PlantVillage images are predominantly controlled-condition photos; soil image model scores are not calibrated field accuracy and the soil weights are not included. Do not store sensitive identity or financial-account details. This is a local development MVP, not a production deployment.
 
 ## Configuration, external APIs, and testing
 
-See [API_SETUP.md](./API_SETUP.md) for API links, setup, endpoints, limitations, and deployment cautions. The [Colab training notebook](./MODEL_TRAINING.ipynb) and [model instructions](./MODEL_TRAINING.md) explain the Crop Doctor model setup.
+See [API_SETUP.md](./API_SETUP.md) for API links, setup, endpoints, limitations, and deployment cautions. [MODEL_TRAINING.md](./MODEL_TRAINING.md) explains Crop Doctor setup; [SOIL_MODEL_SETUP.md](./SOIL_MODEL_SETUP.md) explains how to install the separate supplied soil model.
 
 ```sh
 npm run build
