@@ -4,7 +4,7 @@ import helmet from 'helmet'
 import { rateLimit } from 'express-rate-limit'
 import { config } from './config.js'
 import { authenticate, authenticateOptional, login, register } from './auth.js'
-import { chat, deleteConversation, history, newConversation, streamChat } from './chat.js'
+import { chat, deleteAllConversations, deleteConversation, history, newConversation, streamChat } from './chat.js'
 import { deleteDiagnosis, diagnoseCrop, diagnosisHistory, diagnosisImage, receiveCropImage, supportedCropList } from './cropDoctor.js'
 import { analyzeSoil, deleteSoilAnalysis, receiveSoilImage, soilAnalysisDetails, soilAnalysisImage, soilHistory, soilModelStatus } from './soilAnalysis.js'
 import { geminiAvailability } from './gemini.js'
@@ -46,6 +46,7 @@ app.get('/api/auth/me', authenticate, (req, res) => res.json({ user: req.user })
 app.post('/api/chat', guestChatLimit, authenticateOptional, chat)
 app.post('/api/chat/stream', guestChatLimit, authenticateOptional, streamChat)
 app.get('/api/chat/history', authenticate, history)
+app.delete('/api/chat/history', authenticate, deleteAllConversations)
 app.post('/api/chat/new', authenticate, newConversation)
 app.delete('/api/chat/history/:id', authenticate, deleteConversation)
 app.get('/api/crop-doctor/supported-crops', supportedCropList)
@@ -68,7 +69,7 @@ app.use((error, _req, res, _next) => {
   const status = Number.isInteger(error.status) ? error.status : 500
   if (status >= 500 && status !== 503) console.error('API request failed:', error)
   return res.status(status).json({
-    error: status === 503 ? error.message : status >= 500 ? 'The server could not complete this request. Check the backend configuration and logs.' : error.message,
+    error: status === 503 || status === 504 ? error.message : status >= 500 ? 'The server could not complete this request. Check the backend configuration and logs.' : error.message,
     ...(error.details ? { details: error.details } : {}),
   })
 })

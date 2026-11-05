@@ -124,6 +124,27 @@ class PredictionTests(unittest.TestCase):
 
 
 class ModelLoadingTests(unittest.TestCase):
+    def test_missing_disease_weights_are_reported_before_training_placeholder_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model_dir = Path(directory)
+            (model_dir / "class_labels.json").write_text(json.dumps(LABELS), encoding="utf-8")
+            (model_dir / "model_metadata.json").write_text(
+                json.dumps({
+                    "status": "training_required",
+                    "input_size": [224, 224],
+                    "class_count": len(LABELS),
+                    "classes": LABELS,
+                }),
+                encoding="utf-8",
+            )
+            runtime = ModelRuntime()
+            with patch("app.model_loader.MODEL_DIR", model_dir):
+                runtime.load()
+
+            self.assertFalse(runtime.ready)
+            self.assertEqual(runtime.labels, LABELS)
+            self.assertIn("plant_disease_model.keras is not installed", runtime.error)
+
     def test_missing_weights_keep_class_list_but_never_mark_model_ready(self):
         with tempfile.TemporaryDirectory() as directory:
             model_dir = Path(directory)

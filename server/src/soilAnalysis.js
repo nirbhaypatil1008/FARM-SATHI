@@ -3,6 +3,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import multer from 'multer'
 import { z } from 'zod'
+import { aiServiceUnavailableMessage } from './aiServiceErrors.js'
 import { config } from './config.js'
 import { database } from './db.js'
 
@@ -82,7 +83,7 @@ export async function soilModelStatus(_req, res) {
     return res.json(status.data)
   } catch (error) {
     return res.status(503).json({
-      error: error.name === 'TimeoutError' ? 'Soil analysis service status timed out.' : 'Soil analysis service is unavailable. Start the local AI service.',
+      error: aiServiceUnavailableMessage(error, 'soil-model readiness check'),
       model_loaded: false,
     })
   }
@@ -134,9 +135,7 @@ export async function analyzeSoil(req, res, next) {
         signal: AbortSignal.timeout(90_000),
       })
     } catch (serviceError) {
-      const error = new Error(serviceError.name === 'TimeoutError'
-        ? 'Soil image analysis timed out. Please try again.'
-        : 'Soil image analysis is temporarily unavailable. Please try again later.')
+      const error = new Error(aiServiceUnavailableMessage(serviceError, 'soil-analysis AI service'))
       error.status = 503
       throw error
     }

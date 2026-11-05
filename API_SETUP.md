@@ -48,13 +48,13 @@ The web app is at `http://localhost:5173`, the Express API at `http://localhost:
 
 Without model weights, Crop Doctor and Soil Vision independently report the relevant model unavailable and do not produce predictions. Without a Gemini key, authentication and local history still work; chat reports a useful missing-key error. The Node backend refuses a missing or placeholder JWT secret in production.
 
-## Gemini API — farming chat only
+## Gemini Interactions API — farming chat only
 
 1. Read the official [Gemini API documentation](https://ai.google.dev/gemini-api/docs).
 2. Obtain/manage a key at [Google AI Studio](https://aistudio.google.com/apikey).
-3. Configure `GEMINI_API_KEY` in `server/.env`. Configure `GEMINI_MODEL` to a model available to your account.
-4. Restart the backend. `GET http://localhost:5000/api/health` reports whether Gemini is configured without returning the key.
-5. Sign in, open the Assistant, and submit a farming question. A real model response requires an available model, a valid key, internet access, and available quota.
+3. Configure `GEMINI_API_KEY` in `server/.env`. `GEMINI_MODEL` defaults to `gemini-3.8-flash`; override it only with a model available to your account.
+4. The backend uses the Google GenAI SDK v2 and the Interactions API for chat. Restart the backend after changing its configuration. `GET http://localhost:5000/api/health` reports the active model and whether Gemini is configured without returning the key.
+5. Open the Assistant and submit a farming question. A real model response requires an available model, a valid key, internet access, and available quota. Temporary provider overloads are retried; persistent provider outages are shown as a clear chat error.
 
 Pricing, quotas, model availability, and data handling vary by account, region, model, and current Google terms. Check the official [pricing](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), and [terms](https://ai.google.dev/gemini-api/terms) before deployment. Chat sends bounded user-provided farm context to Google and stores conversations locally.
 
@@ -124,10 +124,12 @@ The Express API validates requests, rate-limits auth/chat and image-analysis rou
 
 - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
 - `POST /api/chat`, `POST /api/chat/stream` — available without sign-in; guest conversations are not stored and are rate-limited.
-- `GET /api/chat/history`, `POST /api/chat/new`, `DELETE /api/chat/history/:id`
+- `GET /api/chat/history`, `POST /api/chat/new`, `DELETE /api/chat/history/:id`, `DELETE /api/chat/history` (clear all conversations for the authenticated account)
 - `GET /api/health`
 
 Voice input and output use browser `SpeechRecognition`/`webkitSpeechRecognition` and `SpeechSynthesis`. No audio is sent to this app's backend, so a separate transcription API key and `/api/voice/transcribe` endpoint are not needed. Microphone permission and a secure context (HTTPS or localhost) are required; Kannada, other Indian languages, and pause/resume behavior depend on browser/device support and installed voices. If recognition is unavailable or permission is denied, text chat remains available.
+
+The assistant offers external video and image-search links based on broad farming topics, alongside official agriculture portals. These are link-outs, not verified or embedded media; review sources before following advice. Search links use fixed topic phrases and do not send the farmer's question or account records to those search providers.
 
 SQLite is local development persistence, not a production multi-instance database. Use TLS and a managed database for production.
 

@@ -11,7 +11,7 @@ process.env.GEMINI_API_KEY = ''
 const { app } = await import('../src/app.js')
 const { database } = await import('../src/db.js')
 const { config } = await import('../src/config.js')
-const { parsePlantDiagnosis } = await import('../src/gemini.js')
+const { buildInteractionInput, normalizeGeminiError, parsePlantDiagnosis, retryGeminiCall, retryGeminiStream } = await import('../src/gemini.js')
 
 let server
 let baseUrl
@@ -83,6 +83,20 @@ async function withAiServiceResponse(body, status, run) {
   }
 }
 
+async function withAiServiceError(error, run) {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (input, options) => {
+    const url = typeof input === 'string' ? input : input.url
+    if (url.startsWith(config.AI_SERVICE_URL)) throw error
+    return originalFetch(input, options)
+  }
+  try {
+    return await run()
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+}
+
 test('health reports SQLite and whether Gemini is configured without exposing credentials', async () => {
   const response = await request('/api/health')
   assert.equal(response.status, 200)
@@ -90,6 +104,79 @@ test('health reports SQLite and whether Gemini is configured without exposing cr
   assert.equal(body.database, 'connected')
   assert.equal(body.gemini.configured, false)
   assert.equal(JSON.stringify(body).includes('GEMINI_API_KEY'), false)
+})
+
+test('Gemini chat retries temporary provider outages and returns safe actionable errors', async () => {
+  const unavailable = Object.assign(new Error('Provider unavailable'), { status: 503 })
+  const normalized = normalizeGeminiError(unavailable)
+  assert.equal(normalized.status, 503)
+  assert.match(normalized.message, /temporarily busy/)
+  assert.match(normalizeGeminiError(new Error('{"error":{"code":404}}')).message, /configured Gemini model is unavailable/)
+  assert.equal(normalizeGeminiError(Object.assign(new Error('High demand'), { code: 'UNAVAILABLE' })).status, 503)
+
+  const interactionInput = buildInteractionInput(
+    [{ role: 'user', content: 'Earlier question' }, { role: 'model', content: 'Earlier answer' }],
+    'Current question',
+    { crops: ['paddy'] },
+  )
+  assert.deepEqual(interactionInput.slice(0, 2), [
+    { type: 'user_input', content: [{ type: 'text', text: 'Earlier question' }] },
+    { type: 'model_output', content: [{ type: 'text', text: 'Earlier answer' }] },
+  ])
+  assert.equal(interactionInput[2].type, 'user_input')
+  assert.match(interactionInput[2].content[0].text, /Available farmer context[\s\S]*Current question/)
+
+  let callAttempts = 0
+  const callResult = await retryGeminiCall(async () => {
+    callAttempts += 1
+    if (callAttempts === 1) throw unavailable
+    return 'answer'
+  })
+  assert.equal(callResult, 'answer')
+  assert.equal(callAttempts, 2)
+
+  let streamAttempts = 0
+  const responseStream = async function* () {
+    yield { text: 'answer' }
+  }
+  const chunks = []
+  for await (const chunk of retryGeminiStream(async () => {
+    streamAttempts += 1
+    if (streamAttempts === 1) throw unavailable
+    return responseStream()
+  })) chunks.push(chunk.text)
+  assert.deepEqual(chunks, ['answer'])
+  assert.equal(streamAttempts, 2)
+
+  let partialStreamAttempts = 0
+  const partialStream = async function* () {
+    yield { text: 'partial' }
+    throw unavailable
+  }
+  const partialChunks = []
+  await assert.rejects(async () => {
+    for await (const chunk of retryGeminiStream(async () => {
+      partialStreamAttempts += 1
+      return partialStream()
+    })) partialChunks.push(chunk.text)
+  }, /temporarily busy/)
+  assert.deepEqual(partialChunks, ['partial'])
+  assert.equal(partialStreamAttempts, 1)
+
+  let partialInteractionAttempts = 0
+  const partialInteractionStream = async function* () {
+    yield { event_type: 'step.delta', delta: { type: 'text', text: 'partial' } }
+    throw unavailable
+  }
+  const partialInteractionChunks = []
+  await assert.rejects(async () => {
+    for await (const chunk of retryGeminiStream(async () => {
+      partialInteractionAttempts += 1
+      return partialInteractionStream()
+    })) partialInteractionChunks.push(chunk)
+  }, /temporarily busy/)
+  assert.deepEqual(partialInteractionChunks, [{ event_type: 'step.delta', delta: { type: 'text', text: 'partial' } }])
+  assert.equal(partialInteractionAttempts, 1)
 })
 
 test('registration, login, protected history, and Gemini-missing error work', async () => {
@@ -157,11 +244,23 @@ test('registration, login, protected history, and Gemini-missing error work', as
   const other = await otherRegistration.json()
   const otherHistory = await request(`/api/chat/history?conversationId=${conversationId}`, { token: other.token })
   assert.deepEqual((await otherHistory.json()).conversations, [])
+  const otherConversation = await request('/api/chat/new', { method: 'POST', token: other.token })
+  assert.equal(otherConversation.status, 201)
 
   const deletedByOther = await request(`/api/chat/history/${conversationId}`, { method: 'DELETE', token: other.token })
   assert.equal(deletedByOther.status, 404)
   const deleted = await request(`/api/chat/history/${conversationId}`, { method: 'DELETE', token: loggedIn.token })
   assert.equal(deleted.status, 204)
+
+  const unauthenticatedClear = await request('/api/chat/history', { method: 'DELETE' })
+  assert.equal(unauthenticatedClear.status, 401)
+  const cleared = await request('/api/chat/history', { method: 'DELETE', token: loggedIn.token })
+  assert.equal(cleared.status, 200)
+  assert.equal((await cleared.json()).deleted, 1)
+  const clearedHistory = await request('/api/chat/history', { token: loggedIn.token })
+  assert.deepEqual((await clearedHistory.json()).conversations, [])
+  const otherHistoryAfterClear = await request('/api/chat/history', { token: other.token })
+  assert.equal((await otherHistoryAfterClear.json()).conversations.length, 1)
 })
 
 test('invalid input receives a useful validation response', async () => {
@@ -236,6 +335,23 @@ test('Crop Doctor supported-crops endpoint reports readiness and rejects malform
   )
   assert.equal(invalid.status, 502)
   assert.match((await invalid.json()).error, /invalid supported-crops response/)
+})
+
+test('AI-service connection errors are reported as connection failures or timeouts', async () => {
+  const connectionError = new TypeError('fetch failed', {
+    cause: Object.assign(new Error('connect failed'), { code: 'ECONNREFUSED' }),
+  })
+  const unavailable = await withAiServiceError(connectionError, () => request('/api/crop-doctor/supported-crops'))
+  assert.equal(unavailable.status, 503)
+  const unavailableBody = await unavailable.json()
+  assert.match(unavailableBody.error, /refused the connection/)
+  assert.match(unavailableBody.error, /AI_SERVICE_URL/)
+  assert.equal(unavailableBody.error.includes(config.AI_SERVICE_URL), false)
+
+  const timeoutError = Object.assign(new Error('request timed out'), { name: 'TimeoutError' })
+  const timedOut = await withAiServiceError(timeoutError, () => request('/api/soil/status'))
+  assert.equal(timedOut.status, 503)
+  assert.match((await timedOut.json()).error, /timed out/)
 })
 
 test('Crop Doctor validates the model response and saves a private diagnosis history entry', async () => {

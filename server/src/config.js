@@ -15,7 +15,7 @@ const environmentSchema = z.object({
   JWT_EXPIRES_IN: z.string().regex(/^\d+(s|m|h|d|w|y)$/, 'Use a duration such as 30m, 12h or 7d.').default('7d'),
   DATABASE_PATH: z.string().default('./data/farm-saathi.sqlite'),
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().trim().min(1).default('gemini-2.5-flash'),
+  GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.8-flash'),
   AI_SERVICE_URL: z.string().url().default('http://127.0.0.1:8000'),
 })
 

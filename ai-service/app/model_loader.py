@@ -49,8 +49,6 @@ class ModelRuntime:
             if len(set(labels)) != len(labels):
                 raise ValueError("Class labels must be unique.")
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if metadata.get("status") == "training_required":
-                raise ValueError("Replace the training-required metadata with the metadata exported alongside the trained model.")
             if metadata.get("input_size") != [224, 224]:
                 raise ValueError("Model metadata must declare a 224 x 224 input.")
             if metadata.get("class_count", len(labels)) != len(labels):
@@ -62,6 +60,8 @@ class ModelRuntime:
             if not model_path.is_file():
                 self.error = f"{MODEL_FILENAME} is not installed. Train in Colab and install the exported model."
                 return
+            if metadata.get("status") == "training_required":
+                raise ValueError("Replace the training-required metadata with the metadata exported alongside the trained model.")
             import tensorflow as tf
 
             model = tf.keras.models.load_model(model_path, compile=False)

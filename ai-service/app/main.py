@@ -6,21 +6,52 @@ from dotenv import load_dotenv
 SERVICE_DIRECTORY = Path(__file__).resolve().parents[1]
 load_dotenv(SERVICE_DIRECTORY / ".env")
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from .image_validator import ImageValidationError, MAX_IMAGE_BYTES, validate_and_preprocess_image
-from .model_loader import runtime
+from .model_loader import LABELS_FILENAME, METADATA_FILENAME, MODEL_DIR, MODEL_FILENAME, runtime
 from .predictor import predict, supported_crops
 from .schemas import PredictionResponse
-from .soil_model_loader import SOIL_PREPROCESSING, soil_runtime
+from .soil_model_loader import (
+    SOIL_LABELS_FILENAME,
+    SOIL_MODEL_DIR,
+    SOIL_MODEL_FILENAME,
+    SOIL_PREPROCESSING,
+    soil_runtime,
+)
 from .soil_predictor import predict_soil
-from .soil_report_ocr import extract_measurements
 from .soil_schemas import SoilPredictionResponse
 
 
+def _tensorflow_status() -> dict[str, str | bool | None]:
+    try:
+        import tensorflow as tf
+    except Exception as error:
+        return {
+            "available": False,
+            "version": None,
+            "error": f"{type(error).__name__}: {error}",
+        }
+    return {"available": True, "version": tf.__version__, "error": None}
+
+
+def _missing_model_files(directory: Path, filenames: tuple[str, ...]) -> list[str]:
+    missing = []
+    for filename in filenames:
+        path = directory / filename
+        if path.is_file():
+            continue
+        try:
+            missing.append(path.resolve().relative_to(SERVICE_DIRECTORY.parent).as_posix())
+        except ValueError:
+            missing.append(f"configured model directory/{filename}")
+    return missing
+
+
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(app: FastAPI):
+    app.state.tensorflow = _tensorflow_status()
     runtime.load()
     soil_runtime.load()
     yield
@@ -35,12 +66,29 @@ app = FastAPI(
 
 
 @app.get("/health")
-def health():
+def health(request: Request):
+    tensorflow = getattr(request.app.state, "tensorflow", {
+        "available": False,
+        "version": None,
+        "error": "TensorFlow availability has not been checked yet.",
+    })
     disease_ready = runtime.ready
     soil_ready = soil_runtime.ready
+    missing_disease_files = _missing_model_files(
+        MODEL_DIR,
+        (MODEL_FILENAME, LABELS_FILENAME, METADATA_FILENAME),
+    )
+    missing_soil_files = _missing_model_files(
+        SOIL_MODEL_DIR,
+        (SOIL_MODEL_FILENAME, SOIL_LABELS_FILENAME),
+    )
+    models_ready = disease_ready and soil_ready
     return {
-        "status": "healthy" if disease_ready and soil_ready else "degraded",
+        "status": "healthy" if tensorflow["available"] and models_ready else "degraded",
         "service": "farm-saathi-ai",
+        "service_status": "running",
+        "tensorflow": tensorflow,
+        "model_ready": models_ready,
         "modelLoaded": disease_ready,
         "modelVersion": runtime.metadata.get("model_version") if runtime.ready else None,
         "supportedCropCount": len(supported_crops(runtime.labels)),
@@ -50,12 +98,14 @@ def health():
                 "loaded": disease_ready,
                 "version": runtime.metadata.get("model_version") if disease_ready else None,
                 "message": "" if disease_ready else runtime.error,
+                "missing_files": missing_disease_files,
             },
             "soil": {
                 "loaded": soil_ready,
                 "version": soil_runtime.metadata.get("model_version") if soil_ready else None,
                 "supportedClassCount": len(soil_runtime.labels),
                 "message": "" if soil_ready else soil_runtime.error,
+                "missing_files": missing_soil_files,
             },
         },
     }
@@ -145,9 +195,19 @@ async def extract_soil_report(file: UploadFile = File(...)):
         raise HTTPException(status_code=413, detail="Choose an image smaller than 5 MB.")
     try:
         validate_and_preprocess_image(raw_image)
-        return extract_measurements(raw_image)
     except ImageValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    try:
+        from .soil_report_ocr import extract_measurements
+    except ModuleNotFoundError as error:
+        if error.name != f"{__package__}.soil_report_ocr":
+            raise
+        raise HTTPException(
+            status_code=503,
+            detail="Soil laboratory report extraction is not configured in this AI service.",
+        ) from error
+    try:
+        return extract_measurements(raw_image)
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except ValueError as error:

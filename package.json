@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run server:dev\" \"npm run web:dev\"",
+    "dev": "concurrently -k -n ai,server,web \"npm:ai:dev\" \"npm:server:dev\" \"npm:web:dev\"",
     "dev:all": "npm run dev",
+    "ai:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ai-service\\start.ps1",
     "web:dev": "vite",
     "server:dev": "npm --prefix server run dev",
     "server:start": "npm --prefix server start",

@@ -138,6 +138,15 @@ export function newConversation(req, res) {
   return res.status(201).json({ conversationId: id })
 }
 
+export function deleteAllConversations(req, res, next) {
+  try {
+    const result = database.prepare('DELETE FROM conversations WHERE user_id = ?').run(req.user.id)
+    return res.json({ deleted: result.changes })
+  } catch (error) {
+    return next(error)
+  }
+}
+
 export function deleteConversation(req, res, next) {
   try {
     const parsed = z.string().uuid().safeParse(req.params.id)

@@ -29,6 +29,21 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 Confirm `modelLoaded` is `true` and `modelVersion` is the exported version. The authenticated Crop Doctor page should then enable image analysis and list supported crops. If loading fails, inspect the health response and AI-service console output.
 
+## Train locally from the FARM SAATHI notebook
+
+The notebook at `C:\Users\<you>\Downloads\FARM_SATHI_Dataset_Training_Evaluation.ipynb` trains PlantVillage only. Its soil section intentionally creates an empty folder; it does not train a soil classifier. The repository script `ai-service\train_from_notebook.py` uses TFDS PlantVillage's 38 class names and extracted class-folder images, then makes deterministic, per-class 70/15/15 splits. This avoids the TFDS example-generator issue observed on Windows while following the notebook's five-epoch MobileNetV2 baseline. It evaluates the held-out split and exports the model using the filenames and preprocessing expected by the local backend.
+
+On Windows, install the training dependencies into the AI-service Python 3.13 environment and run:
+
+```powershell
+ai-service\.venv\Scripts\python.exe -m pip install -r ai-service\requirements-training.txt
+ai-service\.venv\Scripts\python.exe ai-service\train_from_notebook.py --epochs 5
+```
+
+The first run downloads PlantVillage and ImageNet weights. Training on CPU can take a long time; a GPU-enabled Colab runtime is preferable. The model and matching `class_labels.json`, `model_metadata.json`, and measured `training_metrics.json` are exported to `ai-service\models\`. Restart FastAPI after training and confirm disease readiness at `http://127.0.0.1:8000/health`. These results measure the notebook's held-out PlantVillage split, not field accuracy.
+
+Soil Vision remains unavailable until a separate, properly labeled soil-image dataset has been supplied and trained. Do not use the plant-disease model for soil photographs.
+
 ## Dataset and model limitations
 
 PlantVillage has 38 crop/disease classes across 14 crops. The data consists primarily of controlled-condition leaf images. Real fields include different lighting, backgrounds, varieties, growth stages, mixed symptoms, pests, nutrient stress, and diseases absent from the training labels. A high softmax score cannot rule out these conditions. Low confidence, close top classes, blurred images, unsupported crops, or crop-selection mismatch are reported as inconclusive. The model does not use farmer notes as classifier input.

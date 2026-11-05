@@ -3,6 +3,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import multer from 'multer'
 import { z } from 'zod'
+import { aiServiceUnavailableMessage } from './aiServiceErrors.js'
 import { config } from './config.js'
 import { database } from './db.js'
 
@@ -61,8 +62,8 @@ export async function supportedCropList(_req, res) {
       return res.status(502).json({ error: 'The AI service returned an invalid supported-crops response.', crops: [] })
     }
     return res.json(supportedCrops.data)
-  } catch {
-    return res.status(503).json({ error: 'The TensorFlow AI service is unavailable. Start ai-service and install a trained model.', crops: [] })
+  } catch (error) {
+    return res.status(503).json({ error: aiServiceUnavailableMessage(error), crops: [] })
   }
 }
 
@@ -113,9 +114,7 @@ export async function diagnoseCrop(req, res, next) {
         signal: AbortSignal.timeout(90_000),
       })
     } catch (serviceError) {
-      const error = new Error(serviceError.name === 'TimeoutError'
-        ? 'Plant-disease analysis timed out. Please try again with a smaller image.'
-        : 'The TensorFlow AI service is unavailable. Start ai-service and install a trained model before retrying.')
+      const error = new Error(aiServiceUnavailableMessage(serviceError, 'plant-disease AI service'))
       error.status = 503
       throw error
     }

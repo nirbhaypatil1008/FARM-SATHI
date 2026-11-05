@@ -4,13 +4,23 @@ This FastAPI service runs separate MobileNetV2 classifiers for Crop Doctor and S
 
 ## Prerequisites
 
-Install a Python version/platform supported by the TensorFlow release in `requirements.txt`; Python 3.14 is outside its supported range. Linux/WSL is recommended when TensorFlow wheels are unavailable for native Windows. Follow the [TensorFlow installation guide](https://www.tensorflow.org/install/pip).
+Install a Python version/platform supported by the TensorFlow release in `requirements.txt`; Python 3.14 is outside its supported range. The Windows startup script uses Python 3.13. Linux/WSL is recommended if TensorFlow cannot be installed in your native Windows environment. Follow the [TensorFlow installation guide](https://www.tensorflow.org/install/pip).
 
 For Crop Doctor, train/export using the root [Colab notebook](../MODEL_TRAINING.ipynb) and see [MODEL_TRAINING.md](../MODEL_TRAINING.md). For Soil Vision, place the separately supplied `soil_visual_model.keras` and `soil_labels.json` under `models/soil/`; see [SOIL_MODEL_SETUP.md](../SOIL_MODEL_SETUP.md). Soil model weights and labels are not included in this repository.
 
+To train the notebook's PlantVillage baseline locally using Python 3.13, install `requirements-training.txt` and run `python train_from_notebook.py --epochs 5` from this directory. The script uses a deterministic, per-class 70/15/15 split of the 38 PlantVillage classes and reads the extracted image folders directly to avoid a TFDS example-generator issue on Windows. The first run downloads the dataset and ImageNet weights; CPU-only training may take a long time. It exports the disease-model files directly into `models/` and does not train a soil model. See [MODEL_TRAINING.md](../MODEL_TRAINING.md) for the exact Windows commands and limitations.
+
 ## Install and run
 
-From the project root on Windows PowerShell:
+From the project root on Windows PowerShell, start the AI service with:
+
+```powershell
+npm run ai:dev
+```
+
+The script creates `ai-service\.venv` with Python 3.13 when needed, installs the declared requirements, copies `.env.example` if there is no local `.env`, and starts the service. It refuses to start a second service on the configured port. Use `npm run dev` (or its alias, `npm run dev:all`) to start the AI service, Express backend, and Vite frontend together.
+
+To start manually:
 
 ```powershell
 py -3.13 -m venv ai-service\.venv
@@ -21,11 +31,11 @@ Set-Location ai-service
 python run.py
 ```
 
-Change the selected Python version to one supported by TensorFlow. Set `MODEL_DIR` in `.env` to the exported model directory if it is not `ai-service/models`. The `.env` file holds only local runtime settings; this service does not require API credentials.
+Set `MODEL_DIR` in `.env` to the exported disease model directory if it is not `ai-service/models`. The `.env` file holds only local runtime settings; this service does not require API credentials. Express defaults to `AI_SERVICE_URL=http://127.0.0.1:8000`; override it in `server/.env` only if you change the AI-service host or port.
 
 ## Endpoints
 
-- `GET /health` — model readiness, version, supported crop count, and a useful loading error.
+- `GET /health` — service status, TensorFlow import/version, independent disease and soil readiness, missing model files, and loading errors. The service can run with missing weights; model readiness remains false until the actual trained files load.
 - `GET /api/disease/supported-crops` — available classes; remains useful before weights are installed.
 - `POST /api/disease/predict` — multipart fields `file` and optional `crop_name`. This is called by the authenticated Express backend.
 - `GET /api/soil/status` — soil model readiness, version, class count, and preprocessing mode.

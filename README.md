@@ -4,7 +4,7 @@ A mobile-friendly farming companion MVP built with React, Vite, React Router, an
 
 ## Run locally
 
-Use Node.js 20.19+ or 22.12+ and npm. From the project root:
+Use Node.js 20.19+ or 22.12+, npm, and Python 3.13 with the Windows Python launcher. From the project root on Windows:
 
 ```sh
 npm install
@@ -12,14 +12,14 @@ npm install --prefix server
 npm run dev
 ```
 
-`npm run dev` starts both the Express API and web app so account registration, sign-in, chat, and private Crop Doctor history can connect. Open the Vite URL printed in the terminal (normally `http://localhost:5173`). Copy `server/.env.example` to the ignored `server/.env`; add a secure `JWT_SECRET` and a Gemini key if you want farming chat. Accounts work without a Gemini key. Crop Doctor image analysis requires a separately trained PlantVillage model and the local FastAPI service; see [MODEL_TRAINING.md](./MODEL_TRAINING.md).
+`npm run dev` starts the local FastAPI AI service, Express API, and web app together. The first run creates `ai-service\.venv` and installs the declared Python dependencies. Open the Vite URL printed in the terminal (normally `http://localhost:5173`). Copy `server/.env.example` to the ignored `server/.env`; add a secure `JWT_SECRET` and a Gemini key if you want farming chat. Accounts work without a Gemini key. Crop Doctor predictions require a separately trained PlantVillage model, and Soil Vision predictions require their own trained soil model; see [MODEL_TRAINING.md](./MODEL_TRAINING.md), [SOIL_MODEL_SETUP.md](./SOIL_MODEL_SETUP.md), and [ai-service/README.md](./ai-service/README.md).
 
 ## Features
 
 - Editable sample farmer dashboard, local profile, crops/stages/observations, crop planning, calendar, expenses and budget.
 - Live seven-day weather from Open-Meteo (internet required, no key needed).
 - Express API with SQLite accounts and conversation history, scrypt password hashes, JWT auth, request validation, rate limiting, and protected history.
-- Gemini context-aware chat with guest access, server-sent event streaming, and in-page conversation state; signed-in users can save conversations.
+- Gemini context-aware chat with a dashboard launcher, responsive full-page chat/history, server-sent event streaming, and interactive suggestions. Replies support safe Markdown and related video/photo search links plus official agriculture sources. Guest chats stay in the current page; signed-in users can search, reopen, delete, and clear saved conversations. Available local farm records and account-owned crop/soil analysis summaries are included as context; missing measurements are not invented.
 - Crop Doctor with guest image previews and optional authenticated, private SQLite diagnosis history using the MobileNetV2 PlantVillage classifier through the local FastAPI service. Guest reports are not saved. The model weights must be trained in Colab and installed; no fake or Gemini-fallback predictions are returned.
 - Soil Vision with guest image previews, an independent MobileNetV2 model contract, optional authenticated private analysis history, class-score visualization, and clear lab-test limitations. Guest reports are not saved. Install the supplied trained model in `ai-service/models/`; predictions stay disabled until it is present.
 - Browser-native speech recognition and speech output with language selector, microphone permission/error messaging, pause/resume and stop. Actual language availability depends on the browser and installed voices.

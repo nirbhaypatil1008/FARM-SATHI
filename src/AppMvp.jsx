@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import './AppMvp.css'
 
 const FarmContext = createContext(null)
@@ -14,6 +14,24 @@ const navItems = [
 
 const stages = ['Land preparation', 'Seed selection', 'Sowing', 'Germination', 'Seedling', 'Vegetative growth', 'Flowering', 'Fruiting', 'Maturity', 'Harvesting']
 const categories = ['Seeds', 'Fertilizers', 'Pesticides', 'Labor', 'Irrigation', 'Equipment', 'Transportation', 'Machinery rental', 'Other']
+const learningTopics = [
+  { match: /soil|fertility|compost|nutrient|ph|organic matter/, name: 'Soil health', source: 'Soil Health Card portal', url: 'https://soilhealth.dac.gov.in/', video: 'ICAR India soil health fertility farmers', images: 'soil health farming India field examples' },
+  { match: /irrigat|water|drip|watering|drought/, name: 'Water and irrigation', source: 'Pradhan Mantri Krishi Sinchayee Yojana', url: 'https://pmksy.gov.in/', video: 'ICAR India efficient irrigation farmers', images: 'drip irrigation farming India field examples' },
+  { match: /rain|weather|monsoon|heat|frost|storm/, name: 'Weather and farm planning', source: 'India Meteorological Department', url: 'https://mausam.imd.gov.in/', video: 'ICAR India weather advisory farmers', images: 'weather protection crops farming India' },
+  { match: /disease|leaf|yellow|pest|insect|fung|spot|wilting/, name: 'Crop health and pest awareness', source: 'Indian Council of Agricultural Research', url: 'https://icar.gov.in/', video: 'ICAR India crop health pest management farmers', images: 'crop disease symptoms leaves India agriculture' },
+  { match: /crop|seed|sow|plant|harvest|fertiliz|yield|grow/, name: 'Crop cultivation', source: 'Indian Council of Agricultural Research', url: 'https://icar.gov.in/', video: 'ICAR India crop cultivation farmer training', images: 'crop cultivation stages India farming' },
+]
+
+function relatedLearningTopic(text) {
+  const topic = learningTopics.find((item) => item.match.test(text.toLowerCase()))
+  return topic || {
+    name: 'Farming practices',
+    source: 'Indian Council of Agricultural Research',
+    url: 'https://icar.gov.in/',
+    video: 'ICAR India farmer training agriculture',
+    images: 'farming practices India agriculture',
+  }
+}
 
 const t = (text, language) => {
   if (language !== 'kn') return text
@@ -210,7 +228,7 @@ function Layout() {
           <label className="m-language"><span className="sr-only">Language</span><select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="en">English</option><option value="kn">ಕನ್ನಡ</option></select></label>
           <NavLink className="m-notification-button" to="/notifications" aria-label="Farm alerts">♢</NavLink>
           <NavLink className="m-quick-action" to="/crop-growth">＋ Add crop</NavLink>
-          <button className="m-theme" type="button" onClick={() => setDarkMode(!darkMode)} aria-label="Toggle dark mode">{darkMode ? '☼' : '◐'}</button>
+          <button className="m-theme" type="button" onClick={() => setDarkMode(!darkMode)} aria-label={darkMode ? 'Switch to day mode' : 'Switch to night mode'} title={darkMode ? 'Switch to day mode' : 'Switch to night mode'}>{darkMode ? '☀' : '☾'}<span>{darkMode ? 'Day' : 'Night'}</span></button>
           <details className="m-profile-menu"><summary className="m-profile-chip"><span className="m-avatar">{initials}</span><span className="m-profile-name">{displayName}</span><span aria-hidden="true">⌄</span></summary><div className="m-profile-dropdown"><b>{displayName}</b><small>{loc}</small><NavLink to="/profile">Profile & farm settings</NavLink></div></details>
         </div>
       </header>
@@ -238,11 +256,45 @@ function Layout() {
       </Routes></div>
       <nav className="m-bottom-nav">{[['/', 'Home', '⌂'], ['/crop-growth', 'Crops', '↗'], ['/crop-doctor', 'Doctor', '✚'], ['/weather', 'Weather', '☼'], ['/profile', 'Profile', '○']].map(([path, label, icon]) => <NavLink to={path} end={path === '/'} key={path}><span>{icon}</span><small>{label}</small></NavLink>)}</nav>
     </main>
+    <FloatingAssistant />
   </div>
 }
 
 function App() {
   return <FarmProvider><BrowserRouter><Layout /></BrowserRouter></FarmProvider>
+}
+
+function FloatingAssistant() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [open, setOpen] = useState(false)
+  const [prompt, setPrompt] = useState('')
+  const assistantPage = location.pathname === '/ai-assistant' || location.pathname === '/voice-assistant'
+  const suggestions = ['Why are my leaves turning yellow?', 'How often should I irrigate?', 'How can I improve soil fertility?']
+
+  const openChat = (question = '') => {
+    navigate('/ai-assistant', { state: question ? { assistantPrompt: question } : null })
+    setOpen(false)
+    setPrompt('')
+  }
+
+  if (assistantPage) return null
+  return <div className="m-floating-assistant">
+    {open && <section className="m-assistant-preview" role="dialog" aria-label="Farm assistant preview">
+      <header><span className="m-assistant-preview-mark" aria-hidden="true">F</span><div><b>FARM-SAATHI Assistant</b><small>Ask a question about your farm</small></div><button type="button" aria-label="Close assistant preview" onClick={() => setOpen(false)}>×</button></header>
+      <div className="m-assistant-preview-welcome"><b>How can I help today?</b><p>I can use your recorded farm details when you open the full chat.</p></div>
+      <div className="m-assistant-preview-suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => openChat(suggestion)}>{suggestion}</button>)}</div>
+      <form onSubmit={(event) => { event.preventDefault(); openChat(prompt.trim()) }}>
+        <label className="sr-only" htmlFor="assistant-preview-prompt">Ask the farm assistant</label>
+        <input id="assistant-preview-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Write your question…" />
+        <button type="submit" disabled={!prompt.trim()} aria-label="Send question">Send</button>
+      </form>
+      <button className="m-assistant-preview-expand" type="button" onClick={() => openChat()}>Open Full Chat <span aria-hidden="true">↗</span></button>
+    </section>}
+    <button className="m-assistant-launcher" type="button" aria-label={open ? 'Close FARM-SAATHI assistant' : 'Ask FARM-SAATHI'} aria-expanded={open} title="Ask FARM-SAATHI" onClick={() => setOpen((value) => !value)}>
+      {open ? <span aria-hidden="true">×</span> : <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M4.5 5.5A3.5 3.5 0 0 1 8 2h8a3.5 3.5 0 0 1 3.5 3.5v7A3.5 3.5 0 0 1 16 16h-4.1l-4.7 4v-4.1A3.5 3.5 0 0 1 4.5 12V5.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M8 7.5h8M8 11h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
+    </button>
+  </div>
 }
 
 function Dashboard() {
@@ -286,7 +338,32 @@ function Dashboard() {
     {demoMode && <div className="m-demo-banner"><span><b>PROJECT SAMPLE DATA</b><small>Example farm details, crops, tasks and expenses. Not real farmer records.</small></span><Button variant="light" onClick={() => navigate('/profile')}>Edit sample profile</Button><Button variant="light" onClick={resetDemo}>Reset samples</Button><Button variant="light" onClick={startWithOwnData}>Enter my own farm</Button></div>}
     <div className="m-welcome">
       <div className="m-welcome-copy"><span className="m-eyebrow">{todayLabel} · FARM OVERVIEW</span><h1>Welcome back, {profile.name.split(' ')[0]} <span>👋</span></h1><p>Your fields are ready for another day of thoughtful growing.</p><div className="m-welcome-meta"><span>⌖ {profile.village || profile.district}, {profile.state}</span><span>▣ {profile.landSize} {profile.landUnit} registered</span></div><div className="m-welcome-actions"><Button onClick={() => navigate('/crop-growth')}>＋ Add crop record</Button><NavLink className="m-welcome-link" to="/ai-assistant">Ask Farm Assistant ↗</NavLink></div></div>
-      <div className="m-welcome-art" aria-hidden="true"><span>♧</span><b>Growing with care</b></div>
+      <div className="m-welcome-art" aria-hidden="true">
+        <svg className="m-farm-scene" viewBox="0 0 360 250" role="presentation">
+          <circle className="m-scene-sun" cx="292" cy="48" r="24" />
+          <path className="m-scene-hill" d="M0 142 47 103l34 26 45-52 48 53 43-34 51 39 36-22 56 41v96H0z" />
+          <path className="m-scene-field" d="M0 156q85-34 174 0t186 0v94H0z" />
+          <g className="m-scene-rows" fill="none" strokeLinecap="round">
+            <path d="M-20 235q130-77 400-54M-20 252q140-87 400-62M47 258q93-47 264-42" />
+            <path d="M69 203q-6-12-1-22m1 22q6-10 14-13m34 1q-5-13 0-23m0 23q7-11 15-14m35 8q-5-13 0-23m0 23q7-11 15-14m30 11q-5-13 0-23m0 23q7-11 15-14m29 16q-5-13 0-23m0 23q7-11 15-14" />
+          </g>
+          <g className="m-farmer">
+            <path className="m-farmer-legs" d="m197 139-22 37 8 25 13-1 2-19 24-27 4 29 13 14 12-6-7-25 3-27-25-20z" />
+            <path className="m-farmer-shirt" d="m191 104 17-8 17 8 25 30-28 25-35-20-14 14-9-9 13-27z" />
+            <path className="m-farmer-arm" d="m191 111-17 19 24 16m30-30 20 17 13 9" />
+            <path className="m-farmer-hand" d="m195 143 7 5m49-8 7 5" />
+            <path className="m-farmer-face" d="M196 82q0-19 18-19t18 19q0 16-18 20-18-4-18-20" />
+            <path className="m-farmer-hat" d="M191 77q3-18 24-19 18 2 22 17l-15-4-18 5z" />
+            <path className="m-farmer-boot" d="m174 197 1 7-17 5q-5 5 1 8h26l2-7-5-13zm72 1 2 8 15 7q4 5-2 7h-25l-2-9 2-12z" />
+          </g>
+          <g className="m-farm-tool">
+            <path d="m200 145 87 65" />
+            <path d="m278 202 20 4-6 15-17-2" />
+          </g>
+          <path className="m-scene-spark" d="m109 82 3 8 8 3-8 3-3 8-3-8-8-3 8-3zm180 76 2 6 6 2-6 2-2 6-2-6-6-2 6-2z" />
+        </svg>
+        <b>Growing with care</b>
+      </div>
     </div>
     <div className="m-stat-grid m-dashboard-stats">
       <Card className="m-stat"><span className="m-stat-icon">⌂</span><span>Registered land</span><b>{profile.landSize} <small>{profile.landUnit}</small></b><small className="m-stat-foot">Farm profile record</small></Card>
@@ -692,6 +769,9 @@ function DiseasePage() {
   const submitImage = async (event) => {
     event.preventDefault()
     if (!file) return setError('Take or choose a plant image first.')
+    if (!supportedCropInfo.modelLoaded) {
+      return setError(`${supportedCropInfo.message || 'The plant-disease AI model is not ready.'} Start the AI service and install its trained model, then try again.`)
+    }
     setLoading(true)
     setProgress(0)
     setError('')
@@ -733,7 +813,7 @@ function DiseasePage() {
 
   return <div className="m-page">
     <Heading eyebrow="AI Crop Doctor" title="Check a crop from a photo" detail="MobileNetV2 screens the image against PlantVillage leaf classes. Results are not a confirmed diagnosis and may not reflect field conditions." />
-      {!supportedCropInfo.modelLoaded && <p className="m-error" role="status">{supportedCropInfo.message || 'The trained TensorFlow model is not installed yet.'} Prediction is disabled until the AI model is set up. See MODEL_TRAINING.md.</p>}
+      {!supportedCropInfo.modelLoaded && <p className="m-error" role="status">{supportedCropInfo.message || 'The trained TensorFlow model is not installed yet.'} You can select a photo now; start the AI service and install its trained model before analysis.</p>}
       <Card>
         <form className="m-doctor-form" onSubmit={submitImage}>
           <label className="m-field-label">Crop in the photo (optional)<input list="supported-crops" value={cropName} onChange={(event) => setCropName(event.target.value)} maxLength={80} placeholder="Choose a supported crop or leave blank for model classification" /><datalist id="supported-crops">{supportedCropInfo.crops.map((crop) => <option key={crop.crop} value={crop.crop} />)}{crops.map((crop) => <option key={`registered-${crop.id}`} value={crop.name} />)}</datalist></label>
@@ -748,7 +828,7 @@ function DiseasePage() {
           <label className="m-field-label">Your note (not sent to the AI model{token ? '; saved with your report' : '; not saved'})<textarea rows="3" maxLength="800" value={observations} onChange={(event) => setObservations(event.target.value)} placeholder="For example: spots began on older leaves after several rainy days." /></label>
           {loading && <div className="m-doctor-progress" role="status"><div><b>{progress < 100 ? 'Uploading image securely…' : 'MobileNetV2 is analyzing the image…'}</b><span>{progress}% uploaded</span></div><progress max="100" value={progress} /><small>Analysis runs through the private backend and local TensorFlow service. If camera access is unavailable, allow camera permission or use Upload image.</small></div>}
           {error && <p className="m-error" role="alert">{error}</p>}
-          <Button type="submit" disabled={loading || !file || !supportedCropInfo.modelLoaded}>{loading ? 'Analyzing…' : 'Analyze plant image'}</Button>
+          <Button type="submit" disabled={loading || !file}>{loading ? 'Analyzing…' : 'Analyze plant image'}</Button>
         </form>
       </Card>
       {selectedDiagnosis && <DiagnosisReport diagnosis={selectedDiagnosis} imageUrl={reportImage?.id === selectedDiagnosis.id ? reportImage.url || '' : selectedDiagnosis.previewUrl || ''} imageError={reportImage?.id === selectedDiagnosis.id ? reportImage.error || '' : ''} onClose={() => setSelectedDiagnosis(null)} />}
@@ -1010,6 +1090,7 @@ function InsurancePage() {
 }
 
 const CHAT_TOKEN_KEY = 'farm-saathi:chat-token'
+const EMPTY_CHAT_MESSAGES = []
 
 async function apiRequest(path, { token, ...options } = {}) {
   const response = await fetch(`/api${path}`, {
@@ -1130,8 +1211,75 @@ async function lookupWeatherForChat(location) {
   }
 }
 
+function renderInlineMarkdown(text, keyPrefix) {
+  return text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g).map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={`${keyPrefix}-${index}`}>{part.slice(2, -2)}</strong>
+    if (part.startsWith('`') && part.endsWith('`')) return <code key={`${keyPrefix}-${index}`}>{part.slice(1, -1)}</code>
+    if (part.startsWith('*') && part.endsWith('*')) return <em key={`${keyPrefix}-${index}`}>{part.slice(1, -1)}</em>
+    return part
+  })
+}
+
+function MarkdownContent({ content }) {
+  const lines = content.split(/\r?\n/)
+  const blocks = []
+  const unorderedItem = /^\s*[-*]\s+/
+  const orderedItem = /^\s*\d+[.)]\s+/
+  const isTableRule = (line) => /^\s*\|?[\s:-]+(?:\|[\s:-]+)+\|?\s*$/.test(line)
+  const isTableRow = (line) => line.includes('|')
+
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index]
+    if (!line.trim()) {
+      index += 1
+      continue
+    }
+    const heading = line.match(/^\s{0,3}(#{1,3})\s+(.+)$/)
+    if (heading) {
+      const Tag = `h${heading[1].length + 2}`
+      blocks.push(<Tag key={`heading-${index}`}>{renderInlineMarkdown(heading[2], `heading-${index}`)}</Tag>)
+      index += 1
+      continue
+    }
+    if (index + 1 < lines.length && isTableRow(line) && isTableRule(lines[index + 1])) {
+      const cells = (row) => row.trim().replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim())
+      const headers = cells(line)
+      const rows = []
+      index += 2
+      while (index < lines.length && isTableRow(lines[index]) && lines[index].trim()) {
+        rows.push(cells(lines[index]))
+        index += 1
+      }
+      blocks.push(<div className="m-markdown-table-wrap" key={`table-${index}`}><table><thead><tr>{headers.map((cell, cellIndex) => <th key={cellIndex}>{renderInlineMarkdown(cell, `table-head-${index}-${cellIndex}`)}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{headers.map((_, cellIndex) => <td key={cellIndex}>{renderInlineMarkdown(row[cellIndex] || '', `table-cell-${index}-${rowIndex}-${cellIndex}`)}</td>)}</tr>)}</tbody></table></div>)
+      continue
+    }
+    const listType = unorderedItem.test(line) ? 'ul' : orderedItem.test(line) ? 'ol' : ''
+    if (listType) {
+      const matcher = listType === 'ul' ? unorderedItem : orderedItem
+      const items = []
+      while (index < lines.length && matcher.test(lines[index])) {
+        items.push(lines[index].replace(matcher, ''))
+        index += 1
+      }
+      const Tag = listType
+      blocks.push(<Tag key={`list-${index}`}>{items.map((item, itemIndex) => <li key={itemIndex}>{renderInlineMarkdown(item, `list-${index}-${itemIndex}`)}</li>)}</Tag>)
+      continue
+    }
+    const paragraph = []
+    while (index < lines.length && lines[index].trim() && !/^\s{0,3}#{1,3}\s+/.test(lines[index]) && !unorderedItem.test(lines[index]) && !orderedItem.test(lines[index])) {
+      if (index + 1 < lines.length && isTableRow(lines[index]) && isTableRule(lines[index + 1])) break
+      paragraph.push(lines[index].trim())
+      index += 1
+    }
+    if (paragraph.length) blocks.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(paragraph.join(' '), `paragraph-${index}`)}</p>)
+  }
+  return <div className="m-markdown">{blocks}</div>
+}
+
 function AssistantPage({ voiceFirst = false }) {
-  const { profile, crops, tasks, expenses, observations, language } = useFarm()
+  const { profile, crops, tasks, expenses, observations, language, demoMode } = useFarm()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [token, setToken] = useState(() => localStorage.getItem(CHAT_TOKEN_KEY) || '')
   const [user, setUser] = useState({ name: 'Farmer' })
   const [authMode, setAuthMode] = useState('login')
@@ -1149,9 +1297,15 @@ function AssistantPage({ voiceFirst = false }) {
   const [voiceLanguage, setVoiceLanguage] = useState(language === 'kn' ? 'kn-IN' : 'en-IN')
   const [speakingMessage, setSpeakingMessage] = useState('')
   const [speechPaused, setSpeechPaused] = useState(false)
+  const [historySearch, setHistorySearch] = useState('')
+  const [savedAnalysisContext, setSavedAnalysisContext] = useState({ recentCropDiagnoses: [], recentSoilAnalyses: [] })
+  const [savedAnalysisToken, setSavedAnalysisToken] = useState('')
+  const [farmContextError, setFarmContextError] = useState('')
   const recognitionRef = useRef(null)
+  const endOfMessagesRef = useRef(null)
+  const initialPromptRef = useRef('')
   const signedIn = Boolean(token && user)
-  const context = {
+  const context = useMemo(() => ({
     farmer: profile ? {
       name: profile.name,
       landSize: profile.landSize,
@@ -1167,12 +1321,27 @@ function AssistantPage({ voiceFirst = false }) {
     fertilizerAndIrrigationHistory: expenses.filter((item) => /fertiliz|irrigat/i.test(item.category)).slice(0, 15),
     plannedAndCompletedActivities: tasks.slice(0, 15),
     recordedExpenses: expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+    farmRecordSource: demoMode ? 'project sample data; do not present as this farmer’s actual records' : 'farmer-entered browser records',
+    accountName: signedIn ? user.name : null,
+    ...(signedIn && savedAnalysisToken === token ? savedAnalysisContext : { recentCropDiagnoses: [], recentSoilAnalyses: [] }),
     weather: 'Not supplied unless fetched for this request. Do not infer current weather.',
     marketPrices: 'Not supplied. Do not invent current prices.',
-  }
+  }), [profile, crops, observations, expenses, tasks, signedIn, user?.name, savedAnalysisContext, savedAnalysisToken, token, demoMode])
   const activeConversation = conversationList.find((item) => item.id === conversationId)
-  const messages = signedIn ? activeConversation?.messages || [] : guestMessages
-  const suggestions = ['Why are my tomato leaves turning yellow?', 'Summarize my crop stages', 'How much did I record in expenses?', 'Where can I find current mandi prices?']
+  const messages = signedIn ? activeConversation?.messages || EMPTY_CHAT_MESSAGES : guestMessages
+  const suggestions = [
+    'Which crop is suitable for my soil?',
+    'How can I improve soil fertility?',
+    'Why are my plant leaves turning yellow?',
+    'How often should I irrigate my crops?',
+    'What fertilizers are suitable for my crop?',
+    'How can I identify plant diseases?',
+    'What should I do during heavy rainfall?',
+    'How can I increase crop production?',
+    'Explain the recorded growth stage of my crop.',
+    'How can I protect my crops from pests?',
+  ]
+  const visibleConversations = conversationList.filter((item) => item.title.toLowerCase().includes(historySearch.trim().toLowerCase()))
 
   useEffect(() => {
     let active = true
@@ -1195,21 +1364,50 @@ function AssistantPage({ voiceFirst = false }) {
       localStorage.removeItem(CHAT_TOKEN_KEY)
       setToken('')
       setUser({ name: 'Farmer' })
+      setSavedAnalysisContext({ recentCropDiagnoses: [], recentSoilAnalyses: [] })
+      setSavedAnalysisToken('')
+      setFarmContextError('')
       setError(requestError.message)
     })
     return () => { active = false }
   }, [token])
+
+  useEffect(() => {
+    if (!signedIn) return undefined
+    let active = true
+    Promise.allSettled([
+      apiRequest('/crop-doctor/history', { token }),
+      apiRequest('/soil/history', { token }),
+    ]).then(([cropResult, soilResult]) => {
+      if (!active) return
+      const recentCropDiagnoses = cropResult.status === 'fulfilled'
+        ? cropResult.value.diagnoses.slice(0, 5).map(({ cropName, diseaseName, confidence, severity, createdAt, predictionStatus }) => ({ cropName, diseaseName, confidence, severity, createdAt, predictionStatus }))
+        : []
+      const recentSoilAnalyses = soilResult.status === 'fulfilled'
+        ? soilResult.value.analyses.slice(0, 5).map(({ cropName, location, predicted_class, confidence, model_version, status, createdAt }) => ({ cropName, location, predictedClass: predicted_class, confidence, modelVersion: model_version, status, createdAt }))
+        : []
+      const errors = [cropResult, soilResult].filter((result) => result.status === 'rejected')
+      setSavedAnalysisContext({ recentCropDiagnoses, recentSoilAnalyses })
+      setSavedAnalysisToken(token)
+      setFarmContextError(errors.length ? 'Some saved crop or soil history could not be loaded. Chat will use the farm details available in this browser.' : '')
+    })
+    return () => { active = false }
+  }, [signedIn, token])
+
+  useEffect(() => {
+    endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [messages, pendingReply, loading])
 
   useEffect(() => () => {
     recognitionRef.current?.stop()
     window.speechSynthesis?.cancel()
   }, [])
 
-  const refreshHistory = async (keepId = conversationId) => {
+  const refreshHistory = useCallback(async (keepId = conversationId) => {
     const { conversations } = await apiRequest('/chat/history', { token })
     setConversationList(conversations)
     setConversationId((current) => keepId && conversations.some((item) => item.id === keepId) ? keepId : current && conversations.some((item) => item.id === current) ? current : conversations[0]?.id || '')
-  }
+  }, [token, conversationId])
 
   const submitAuth = async (event) => {
     event.preventDefault()
@@ -1236,6 +1434,9 @@ function AssistantPage({ voiceFirst = false }) {
     setConversationList([])
     setConversationId('')
     setGuestMessages([])
+    setSavedAnalysisContext({ recentCropDiagnoses: [], recentSoilAnalyses: [] })
+    setSavedAnalysisToken('')
+    setFarmContextError('')
   }
 
   const newChat = async () => {
@@ -1255,19 +1456,32 @@ function AssistantPage({ voiceFirst = false }) {
     }
   }
 
-  const removeChat = async () => {
-    if (!signedIn || !conversationId || !window.confirm('Delete this conversation and its saved messages?')) return
+  const removeChat = async (id = conversationId, confirmRemoval = true) => {
+    if (!signedIn || !id || (confirmRemoval && !window.confirm('Delete this conversation and its saved messages?'))) return
     setError('')
     try {
-      await apiRequest(`/chat/history/${conversationId}`, { method: 'DELETE', token })
-      setConversationList((items) => items.filter((item) => item.id !== conversationId))
-      setConversationId('')
+      await apiRequest(`/chat/history/${id}`, { method: 'DELETE', token })
+      setConversationList((items) => items.filter((item) => item.id !== id))
+      setConversationId((current) => current === id ? '' : current)
     } catch (requestError) {
       setError(requestError.message)
     }
   }
 
-  const streamQuestion = async (text = question, retry = false) => {
+  const clearHistory = async () => {
+    if (!signedIn || !conversationList.length || !window.confirm('Permanently delete all of your saved assistant conversations?')) return
+    setError('')
+    try {
+      await apiRequest('/chat/history', { method: 'DELETE', token })
+      setConversationList([])
+      setConversationId('')
+      setNotice('All saved conversations were deleted.')
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
+  const streamQuestion = useCallback(async (text = question, retry = false) => {
     const prompt = text.trim()
     if (!prompt || loading) return
     setQuestion('')
@@ -1278,8 +1492,9 @@ function AssistantPage({ voiceFirst = false }) {
     let targetConversation = conversationId
     let streamError = ''
     const priorGuestMessages = signedIn ? [] : retry && guestMessages.at(-1)?.role === 'user' ? guestMessages.slice(0, -1) : guestMessages
+    const userMessage = { id: crypto.randomUUID(), role: 'user', content: prompt, created_at: new Date().toISOString() }
     if (!signedIn && !retry) {
-      setGuestMessages((items) => [...items, { id: crypto.randomUUID(), role: 'user', content: prompt }])
+      setGuestMessages((items) => [...items, userMessage])
     }
     try {
       const currentContext = {
@@ -1327,7 +1542,7 @@ function AssistantPage({ voiceFirst = false }) {
       if (signedIn) {
         await refreshHistory(targetConversation)
       } else {
-        setGuestMessages([...priorGuestMessages, { id: crypto.randomUUID(), role: 'user', content: prompt }, ...(reply ? [{ id: crypto.randomUUID(), role: 'model', content: reply }] : [])])
+        setGuestMessages([...priorGuestMessages, userMessage, ...(reply ? [{ id: crypto.randomUUID(), role: 'model', content: reply, created_at: new Date().toISOString() }] : [])])
       }
       if (streamError) throw new Error(streamError)
       setPendingReply('')
@@ -1337,7 +1552,7 @@ function AssistantPage({ voiceFirst = false }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [question, loading, conversationId, signedIn, guestMessages, context, profile, voiceLanguage, refreshHistory, token])
 
   const retryLast = () => {
     const lastUser = [...messages].reverse().find((message) => message.role === 'user')
@@ -1348,7 +1563,8 @@ function AssistantPage({ voiceFirst = false }) {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) return setVoiceStatus('Speech recognition is not available in this browser. Type your question instead, or use a browser/device with Web Speech recognition support.')
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true })
+      const microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      microphoneStream.getTracks().forEach((track) => track.stop())
       const recognition = new SpeechRecognition()
       recognitionRef.current = recognition
       recognition.lang = voiceLanguage
@@ -1408,22 +1624,73 @@ function AssistantPage({ voiceFirst = false }) {
     }
   }
 
+  useEffect(() => {
+    const initialPrompt = location.state?.assistantPrompt
+    if (typeof initialPrompt !== 'string' || !initialPrompt.trim() || initialPromptRef.current === initialPrompt) return
+    initialPromptRef.current = initialPrompt
+    navigate(location.pathname, { replace: true, state: null })
+    streamQuestion(initialPrompt)
+  }, [location.key, location.pathname, location.state, navigate, streamQuestion])
+
   if (!user) return <div className="m-page"><Heading eyebrow={voiceFirst ? 'Voice assistant' : 'Farm assistant'} title={voiceFirst ? 'Speak with your farm assistant' : 'Farm assistant'} detail="Sign in or create an account to save conversations securely in the local backend database." /><Card className="m-auth-card"><div className="m-assistant-banner"><span>☏</span><div><h2>{health?.error ? 'Backend unavailable' : health ? 'Account service ready' : 'Connecting to server…'}</h2><p>{health?.error ? health.error : health?.gemini?.configured ? `Sign-in and account creation are ready. Gemini chat is enabled (${health.gemini.model}).` : health ? 'Sign-in and account creation are ready. To use AI chat, add GEMINI_API_KEY to server/.env and restart the backend.' : 'Checking the account service…'}</p></div></div><div className="m-auth-tabs"><button type="button" className={authMode === 'login' ? 'active' : ''} onClick={() => setAuthMode('login')}>Sign in</button><button type="button" className={authMode === 'register' ? 'active' : ''} onClick={() => setAuthMode('register')}>Create account</button></div><form className="m-form" onSubmit={submitAuth}>{authMode === 'register' && <label>Your name<input autoComplete="name" required minLength="2" value={authForm.name} onChange={(event) => setAuthForm({ ...authForm, name: event.target.value })} /></label>}<label>Email<input autoComplete="email" type="email" required value={authForm.email} onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })} /></label><label>Password (at least 10 characters)<input autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} type="password" minLength="10" required value={authForm.password} onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })} /></label><Button type="submit" disabled={loading}>{loading ? 'Please wait…' : authMode === 'register' ? 'Create account' : 'Sign in'}</Button></form>{error && <p className="m-error" role="alert">{error}</p>}<p className="m-muted">You can create an account without a Gemini key. Account credentials and chat history are stored by the local Express service in SQLite. This is a development setup; use HTTPS and a production database before deployment.</p></Card></div>
 
   return <div className="m-page"><Heading eyebrow={voiceFirst ? 'Voice-first assistant' : 'Farm assistant'} title={voiceFirst ? 'Talk to your farm assistant' : 'Ask Gemini about your farm'} detail="Ask without signing in. Gemini uses the farm records currently available in this browser, and guest conversations stay only on this page." action={<div className="m-assistant-heading-actions"><span className={`m-backend-status ${health?.gemini?.configured ? 'ready' : ''}`}>{health?.gemini?.configured ? `Gemini · ${health.gemini.model}` : 'Gemini key not configured'}</span><Button variant="light" onClick={newChat}>＋ New chat</Button>{signedIn ? <Button variant="light" onClick={logout}>Sign out</Button> : <Button variant="light" onClick={() => setUser(null)}>Account (optional)</Button>}</div>} />
-    <Card><div className="m-assistant-banner"><span>{voiceFirst ? '♫' : '☏'}</span><div><h2>Hello, {user?.name || 'Farmer'}</h2><p>Farm context included: {profile?.district || 'location not set'} · {crops.length} crops · {observations.length} observations · {expenses.length} expenses</p></div></div>
-      <div className="m-chat-toolbar">{conversationList.length > 0 && <label>Conversation<select value={conversationId} onChange={(event) => setConversationId(event.target.value)}>{conversationList.map((item) => <option key={item.id} value={item.id}>{item.title.slice(0, 55)} · {new Date(item.updated_at).toLocaleDateString()}</option>)}</select></label>}{signedIn && conversationId && <Button variant="light" onClick={removeChat}>Delete chat</Button>}</div>
-      {voiceFirst && <section className="m-voice-console"><div className={`m-listening-indicator ${voiceStatus.startsWith('Listening') ? 'active' : ''}`}>{voiceStatus.startsWith('Listening') ? '● Listening' : '🎙'}</div><div><h2>Ask in your language</h2><p>{voiceStatus || 'Tap the microphone and speak. Recognized words appear below so you can review them before sending.'}</p></div><Button type="button" onClick={startVoice}>🎙 Start listening</Button><Button type="button" variant="light" onClick={stopVoice}>Stop listening</Button></section>}
-      {messages.length === 0 && !pendingReply ? <div className="m-empty"><span className="m-empty-icon">☏</span><b>Start a new farming conversation</b><p>Ask a question and Gemini will use your farm details where they are available.</p></div> : <div className="m-chat-history">{messages.map((message) => <article className="m-chat-turn" key={message.id}><p className={`m-chat-${message.role === 'user' ? 'question' : 'reply'}`}><b>{message.role === 'user' ? 'You' : 'Farm Saathi · Gemini'}</b><span>{message.content}</span>{message.role === 'model' && <span className="m-message-actions"><button type="button" onClick={() => copy(message.content)}>Copy</button><button type="button" onClick={() => speak(message.id, message.content)}>🔊 Listen</button>{speakingMessage === message.id && <><button type="button" onClick={pauseSpeech}>{speechPaused ? 'Resume' : 'Pause'}</button><button type="button" onClick={stopSpeech}>Stop</button></>}</span>}</p></article>)}
-      {pendingReply && <article className="m-chat-turn"><p className="m-chat-reply"><b>Farm Saathi · Gemini</b><span>{pendingReply}</span></p></article>}
-      {loading && !pendingReply && <div className="m-typing"><span></span><span></span><span></span> Gemini is thinking…</div>}
-      </div>}
-      <div className="m-language-row"><label>Voice and answer language<select value={voiceLanguage} onChange={(event) => setVoiceLanguage(event.target.value)}><option value="en-IN">English (India)</option><option value="kn-IN">ಕನ್ನಡ (Kannada)</option><option value="hi-IN">हिन्दी (Hindi)</option><option value="ta-IN">தமிழ் (Tamil)</option><option value="te-IN">తెలుగు (Telugu)</option><option value="mr-IN">मराठी (Marathi)</option></select></label><small>Speech support depends on your browser/device. Gemini language output follows your selection where possible.</small></div>
-      <form className="m-chat-compose" onSubmit={(event) => { event.preventDefault(); streamQuestion() }}><textarea rows={voiceFirst ? 4 : 3} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about your crops, field observations, expenses, or farming plans…" /><div><Button type="button" variant="light" onClick={startVoice}>🎙 Microphone</Button>{voiceStatus.startsWith('Listening') && <Button type="button" variant="light" onClick={stopVoice}>Stop microphone</Button>}<Button type="submit" disabled={!question.trim() || loading}>{loading ? 'Getting response…' : 'Send to Gemini'}</Button>{messages.some((message) => message.role === 'user') && <Button type="button" variant="light" onClick={retryLast} disabled={loading}>Retry last question</Button>}</div></form>
-      {voiceStatus && !voiceFirst && <p className="m-muted" role="status">{voiceStatus}</p>}{error && <p className="m-error" role="alert">{error}</p>}{notice && <p className="m-success" role="status">{notice}</p>}
-      <p className="m-warning">AI responses can be wrong. Do not treat them as a disease diagnosis, soil test, pesticide prescription, live price, or official eligibility decision.</p>
-    </Card>
-    <Card><h2>Suggested farming questions</h2><div className="m-topic-list">{suggestions.map((suggestion) => <div key={suggestion}><span>{suggestion}</span><button type="button" onClick={() => setQuestion(suggestion)}>Use question</button></div>)}</div></Card>
+    {farmContextError && <p className="m-muted" role="status">{farmContextError}</p>}
+    <div className="m-full-chat">
+      <aside className="m-chat-sidebar" aria-label="Conversation history">
+        <div className="m-chat-sidebar-brand"><span aria-hidden="true">F</span><div><b>FARM-SAATHI</b><small>AI farming assistant</small></div></div>
+        <Button type="button" onClick={newChat}>＋ New chat</Button>
+        {signedIn ? <>
+          <label className="m-chat-search">Search conversations<input type="search" value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Find a conversation" /></label>
+          <div className="m-chat-history-list">
+            {visibleConversations.map((item) => <div className={`m-chat-history-item ${item.id === conversationId ? 'active' : ''}`} key={item.id}>
+              <button type="button" onClick={() => setConversationId(item.id)} disabled={loading} aria-current={item.id === conversationId ? 'page' : undefined}>
+                <span>{item.title}</span><small>{new Date(item.updated_at).toLocaleDateString()}</small>
+              </button>
+              <button type="button" className="m-chat-delete" aria-label={`Delete conversation: ${item.title}`} onClick={() => removeChat(item.id)}>×</button>
+            </div>)}
+            {!visibleConversations.length && <p className="m-muted">{conversationList.length ? 'No conversations match your search.' : 'Your saved conversations will appear here.'}</p>}
+          </div>
+          {conversationList.length > 0 && <button className="m-chat-clear" type="button" onClick={clearHistory} disabled={loading}>Clear all chat history</button>}
+        </> : <div className="m-chat-guest-note"><p>Guest chats are temporary and stay in this browser tab.</p><Button type="button" variant="light" onClick={() => setUser(null)}>Sign in to save chats</Button></div>}
+      </aside>
+      <Card className="m-chat-main">
+        <div className="m-assistant-banner"><span aria-hidden="true">F</span><div><h2>Hello, {user.name || 'Farmer'}</h2><p>Farm context: {profile?.district || 'location not set'} · {crops.length} crops · {observations.length} observations · {expenses.length} expenses{signedIn ? ` · ${savedAnalysisContext.recentSoilAnalyses.length} soil reports · ${savedAnalysisContext.recentCropDiagnoses.length} crop diagnoses` : ''}</p></div></div>
+        <div className="m-chat-toolbar"><span>{activeConversation?.title || 'New conversation'}</span>{signedIn && conversationId && <Button type="button" variant="light" onClick={() => removeChat()}>Delete chat</Button>}</div>
+        {voiceFirst && <section className="m-voice-console"><div className={`m-listening-indicator ${voiceStatus.startsWith('Listening') ? 'active' : ''}`}>{voiceStatus.startsWith('Listening') ? 'Listening' : 'Mic'}</div><div><h2>Ask in your language</h2><p>{voiceStatus || 'Tap the microphone and speak. Recognized words appear below so you can review them before sending.'}</p></div><Button type="button" onClick={startVoice}>Start listening</Button><Button type="button" variant="light" onClick={stopVoice}>Stop listening</Button></section>}
+        {messages.length === 0 && !pendingReply ? <div className="m-chat-welcome"><span className="m-chat-welcome-mark" aria-hidden="true">F</span><h2>How can I help with your farm?</h2><p>Choose a question or type your own. Advice will use recorded farm information when available and will not assume missing measurements.</p><div className="m-chat-suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => streamQuestion(suggestion)} disabled={loading}>{suggestion}</button>)}</div></div> : <div className="m-chat-history" aria-live="polite">
+          {messages.map((message, messageIndex) => {
+            const previousQuestion = message.role === 'model'
+              ? messages.slice(0, messageIndex).reverse().find((item) => item.role === 'user')?.content || ''
+              : ''
+            const topic = message.role === 'model' ? relatedLearningTopic(`${previousQuestion} ${message.content}`) : null
+            return <article className={`m-chat-turn ${message.role === 'user' ? 'farmer' : 'assistant'}`} key={message.id}>
+              <div className={`m-chat-${message.role === 'user' ? 'question' : 'reply'}`}>
+                <div className="m-chat-message-heading"><b>{message.role === 'user' ? 'You' : 'FARM-SAATHI'}</b>{message.created_at && <time dateTime={message.created_at}>{String(message.created_at).replace('T', ' ').slice(0, 16)}</time>}</div>
+                {message.role === 'user' ? <p>{message.content}</p> : <MarkdownContent content={message.content} />}
+                {message.role === 'model' && <div className="m-message-actions"><button type="button" onClick={() => copy(message.content)}>Copy</button><button type="button" onClick={() => speak(message.id, message.content)}>Listen</button>{speakingMessage === message.id && <><button type="button" onClick={pauseSpeech}>{speechPaused ? 'Resume' : 'Pause'}</button><button type="button" onClick={stopSpeech}>Stop</button></>}</div>}
+                {topic && <details className="m-learning-resources">
+                  <summary>Related photos and videos · {topic.name}</summary>
+                  <div>
+                    <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(topic.video)}`} target="_blank" rel="noreferrer">Watch related farming videos ↗</a>
+                    <a href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(topic.images)}`} target="_blank" rel="noreferrer">Browse photo examples ↗</a>
+                    <a href={topic.url} target="_blank" rel="noreferrer">Official guide · {topic.source} ↗</a>
+                    <small>External results can vary. Check the source and confirm field-specific advice with a local agriculture expert.</small>
+                  </div>
+                </details>}
+              </div>
+            </article>
+          })}
+          {pendingReply && <article className="m-chat-turn assistant"><div className="m-chat-reply"><div className="m-chat-message-heading"><b>FARM-SAATHI</b><span>Typing</span></div><MarkdownContent content={pendingReply} /></div></article>}
+          {loading && !pendingReply && <div className="m-typing" role="status"><span></span><span></span><span></span> FARM-SAATHI is preparing a response…</div>}
+          <div ref={endOfMessagesRef} />
+        </div>}
+        <div className="m-language-row"><label>Answer and voice language<select value={voiceLanguage} onChange={(event) => setVoiceLanguage(event.target.value)}><option value="en-IN">English (India)</option><option value="kn-IN">ಕನ್ನಡ (Kannada)</option><option value="hi-IN">हिन्दी (Hindi)</option><option value="ta-IN">தமிழ் (Tamil)</option><option value="te-IN">తెలుగు (Telugu)</option><option value="mr-IN">मराठी (Marathi)</option></select></label><small>Speech support depends on your browser/device. Replies follow this language where possible.</small></div>
+        <form className="m-chat-compose" onSubmit={(event) => { event.preventDefault(); streamQuestion() }}><textarea rows={voiceFirst ? 4 : 3} maxLength={4000} value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); streamQuestion() } }} aria-label="Your message" placeholder="Ask about your crops, field observations, expenses, or farming plans…" /><div><Button type="button" variant="light" onClick={startVoice}>Microphone</Button>{voiceStatus.startsWith('Listening') && <Button type="button" variant="light" onClick={stopVoice}>Stop microphone</Button>}<Button type="submit" disabled={!question.trim() || loading}>{loading ? 'Getting response…' : 'Send'}</Button>{messages.some((message) => message.role === 'user') && <Button type="button" variant="light" onClick={retryLast} disabled={loading}>Regenerate last answer</Button>}<small>Enter to send · Shift + Enter for a new line</small></div></form>
+        {voiceStatus && !voiceFirst && <p className="m-muted" role="status">{voiceStatus}</p>}{error && <p className="m-error" role="alert">{error}</p>}{notice && <p className="m-success" role="status">{notice}</p>}
+        <p className="m-warning">AI responses can be wrong. Do not treat them as a disease diagnosis, soil test, pesticide prescription, live price, or official eligibility decision.</p>
+      </Card>
+    </div>
   </div>
 }
 
