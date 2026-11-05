@@ -129,6 +129,8 @@ def root_redirect():
 
 
 @app.get("/health", tags=["Health & Status"])
+@app.get("/api/health", tags=["Health & Status"])
+@app.get("/api/v1/health", tags=["Health & Status"])
 def health_check():
     """Returns application health, version, and active environment status."""
     return {
