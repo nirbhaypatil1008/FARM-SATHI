@@ -20,7 +20,29 @@ ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"]
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
+@router.get("/supported-crops")
+@router.get("/crop-doctor/supported-crops")
+def get_supported_crops():
+    """Returns list of supported crops and AI pathology model status."""
+    return {
+        "crops": [
+            {"crop": "Tomato"},
+            {"crop": "Wheat"},
+            {"crop": "Rice (Paddy)"},
+            {"crop": "Cotton"},
+            {"crop": "Potato"},
+            {"crop": "Maize / Corn"},
+            {"crop": "Soybean"},
+            {"crop": "Groundnut"}
+        ],
+        "modelLoaded": True,
+        "message": "AI Vision Plant Pathology Service is ready for leaf diagnostics."
+    }
+
+
 @router.post("/detect", response_model=DiseaseDetectionResponse)
+@router.post("/crop-doctor/diagnose", response_model=DiseaseDetectionResponse)
+@router.post("/crop-doctor/preview", response_model=DiseaseDetectionResponse)
 async def detect_crop_disease(
     file: UploadFile = File(..., description="Crop leaf photograph (JPEG/PNG, max 5MB)"),
     crop_name: Optional[str] = Form(None, description="Optional crop hint"),
@@ -78,6 +100,7 @@ async def detect_crop_disease(
 
 
 @router.get("/history", response_model=List[DiseaseDetectionResponse])
+@router.get("/crop-doctor/history", response_model=List[DiseaseDetectionResponse])
 def get_diagnosis_history(
     current_farmer: Farmer = Depends(get_current_farmer),
     db: Session = Depends(get_db)

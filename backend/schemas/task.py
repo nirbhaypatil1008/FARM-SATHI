@@ -3,8 +3,8 @@ Pydantic Schemas for Farm Tasks and Reminders.
 """
 
 from datetime import date, datetime
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Optional, Union
+from pydantic import BaseModel, Field, field_validator
 
 
 class TaskCreate(BaseModel):
@@ -15,6 +15,17 @@ class TaskCreate(BaseModel):
     due_date: date = Field(default_factory=date.today)
     priority: str = Field(default="Medium", example="High")        # Low, Medium, High
 
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def parse_due_date(cls, v):
+        if isinstance(v, str):
+            # Parse '2026-11-10T08:00:00Z' or '2026-11-10'
+            date_str = v.split("T")[0]
+            return date.fromisoformat(date_str)
+        if isinstance(v, datetime):
+            return v.date()
+        return v
+
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -23,6 +34,18 @@ class TaskUpdate(BaseModel):
     due_date: Optional[date] = None
     priority: Optional[str] = None
     status: Optional[str] = None  # Pending, In Progress, Completed
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def parse_due_date_update(cls, v):
+        if not v:
+            return None
+        if isinstance(v, str):
+            date_str = v.split("T")[0]
+            return date.fromisoformat(date_str)
+        if isinstance(v, datetime):
+            return v.date()
+        return v
 
 
 class TaskResponse(BaseModel):

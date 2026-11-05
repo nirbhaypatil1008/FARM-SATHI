@@ -13,7 +13,12 @@ class IrrigationRequest(BaseModel):
     soil_type: str = Field(default="Alluvial", example="Black")          # Alluvial, Black, Red, Clay, Sandy, Loamy
     land_size_acres: float = Field(default=2.0, gt=0.0, example=2.0)
     pump_hp: float = Field(default=5.0, gt=0.0, description="Pump Horsepower (HP)", example=5.0)
+    pump_capacity_hp: Optional[float] = Field(None, description="Alias for pump_hp")
     recent_rain_mm: Optional[float] = Field(0.0, ge=0.0, description="Rainfall in last 24h", example=0.0)
+
+    def model_post_init(self, __context):
+        if self.pump_capacity_hp and self.pump_capacity_hp > 0:
+            self.pump_hp = self.pump_capacity_hp
 
 
 class IrrigationResponse(BaseModel):

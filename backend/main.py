@@ -100,17 +100,24 @@ app.add_exception_handler(StarletteHTTPException, general_http_exception_handler
 
 # ----------------- ROUTE MOUNTING -----------------
 API_V1_PREFIX = "/api/v1"
+API_PREFIX = "/api"
+ALL_ROUTERS = [
+    auth_router,
+    farms_router,
+    ai_router,
+    crop_router,
+    weather_router,
+    irrigation_router,
+    market_router,
+    schemes_router,
+    tasks_router,
+    calculator_router
+]
 
-app.include_router(auth_router, prefix=API_V1_PREFIX)
-app.include_router(farms_router, prefix=API_V1_PREFIX)
-app.include_router(ai_router, prefix=API_V1_PREFIX)
-app.include_router(crop_router, prefix=API_V1_PREFIX)
-app.include_router(weather_router, prefix=API_V1_PREFIX)
-app.include_router(irrigation_router, prefix=API_V1_PREFIX)
-app.include_router(market_router, prefix=API_V1_PREFIX)
-app.include_router(schemes_router, prefix=API_V1_PREFIX)
-app.include_router(tasks_router, prefix=API_V1_PREFIX)
-app.include_router(calculator_router, prefix=API_V1_PREFIX)
+for r in ALL_ROUTERS:
+    app.include_router(r, prefix=API_V1_PREFIX)
+    app.include_router(r, prefix=API_PREFIX)
+    app.include_router(r)
 
 
 # ----------------- ROOT & HEALTH CHECK -----------------

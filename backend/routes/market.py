@@ -14,6 +14,7 @@ router = APIRouter(prefix="/market", tags=["Market & Mandi Prices"])
 
 
 @router.get("/prices", response_model=List[MarketPriceResponse])
+@router.get("/market-prices", response_model=List[MarketPriceResponse])
 def get_market_prices(
     commodity: Optional[str] = Query(None, example="Wheat"),
     state: Optional[str] = Query(None, example="Punjab"),

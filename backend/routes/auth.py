@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database.session import get_db
 from models.farmer import Farmer
-from schemas.farmer import FarmerRegister, FarmerLogin, FarmerResponse, Token
+from schemas.farmer import FarmerRegister, FarmerLogin, FarmerResponse, FarmerUpdate, Token
 from utils.security import hash_password, verify_password, create_access_token
 from utils.dependencies import get_current_farmer
 
@@ -81,4 +81,29 @@ def get_farmer_profile(current_farmer: Farmer = Depends(get_current_farmer)):
     """
     Returns the authenticated farmer's personal profile and preferences.
     """
+    return current_farmer
+
+
+@router.put("/me", response_model=FarmerResponse)
+def update_farmer_profile(
+    payload: FarmerUpdate,
+    current_farmer: Farmer = Depends(get_current_farmer),
+    db: Session = Depends(get_db)
+):
+    """
+    Updates the authenticated farmer's profile information.
+    """
+    if payload.name:
+        current_farmer.name = payload.name
+    if payload.preferred_language:
+        current_farmer.preferred_language = payload.preferred_language
+    if payload.state:
+        current_farmer.state = payload.state
+    if payload.district:
+        current_farmer.district = payload.district
+    if payload.pincode:
+        current_farmer.pincode = payload.pincode
+
+    db.commit()
+    db.refresh(current_farmer)
     return current_farmer
