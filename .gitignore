@@ -30,3 +30,26 @@ server/*.sqlite-wal
 *.njsproj
 *.sln
 *.sw?
+
+
+# Python & Backend
+venv/
+.venv/
+backend/venv/
+backend/.venv/
+backend/.env
+backend/.env.*
+!.env.example
+!backend/.env.example
+__pycache__/
+*.py[cod]
+backend/**/__pycache__/
+.pytest_cache/
+backend/.pytest_cache/
+*.db
+*.sqlite3
+backend/*.db
+backend/*.sqlite3
+uploads/
+backend/uploads/
+my-hackathon/
