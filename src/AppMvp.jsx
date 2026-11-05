@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import './AppMvp.css'
 
@@ -287,13 +287,15 @@ function Dashboard() {
 
 function WeatherPeek({ location, onOpen }) {
   const [weather, setWeather] = useState(null)
-  const [status, setStatus] = useState('idle')
+  const [status, setStatus] = useState('loading')
   const [error, setError] = useState('')
-  const loadWeather = async () => {
-    setStatus('loading')
-    setError('')
+  const loadWeather = useCallback(async (signal, showLoading = true) => {
+    if (showLoading) {
+      setStatus('loading')
+      setError('')
+    }
     try {
-      const locationResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`)
+      const locationResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`, { signal })
       if (!locationResponse.ok) throw new Error('Could not look up that area.')
       const locationData = await locationResponse.json()
       const place = locationData.results?.[0]
@@ -306,19 +308,25 @@ function WeatherPeek({ location, onOpen }) {
         timezone: 'auto',
         forecast_days: '1',
       })
-      const weatherResponse = await fetch(`https://api.open-meteo.com/v1/forecast?${query}`)
+      const weatherResponse = await fetch(`https://api.open-meteo.com/v1/forecast?${query}`, { signal })
       if (!weatherResponse.ok) throw new Error('Weather service is currently unavailable.')
       const data = await weatherResponse.json()
       setWeather({ ...data.current, place, rainChance: data.daily?.precipitation_probability_max?.[0] })
       setStatus('ready')
     } catch (requestError) {
+      if (requestError.name === 'AbortError') return
       console.error('Dashboard weather lookup failed.', requestError)
       setError(requestError.message || 'Weather lookup failed. Check your connection.')
       setStatus('error')
     }
-  }
+  }, [location])
+  useEffect(() => {
+    const controller = new AbortController()
+    Promise.resolve().then(() => loadWeather(controller.signal, false))
+    return () => controller.abort()
+  }, [loadWeather])
   return <Card><div className="m-section-title"><div><span className="m-eyebrow">Area forecast</span><h2>Weather snapshot</h2></div><button className="m-plain-action" type="button" onClick={onOpen}>7-day →</button></div>
-    {weather ? <div className="m-dashboard-weather"><div><span className="m-weather-symbol">{weatherDescription(weather.weather_code)[1]}</span><b>{Math.round(weather.temperature_2m)}°C</b><small>{weatherDescription(weather.weather_code)[0]} · {weather.place.name}</small></div><div><span>Humidity</span><b>{weather.relative_humidity_2m}%</b></div><div><span>Rain chance today</span><b>{weather.rainChance ?? '—'}%</b></div><small className="m-live-label">LIVE FORECAST · OPEN-METEO</small></div> : <div className="m-weather-empty"><span>☼</span><p><b>{status === 'loading' ? 'Checking current forecast…' : 'Live weather is not loaded'}</b><small>{error || `Fetch current conditions for ${location}. No sample weather is shown.`}</small></p><Button variant="light" onClick={loadWeather} disabled={status === 'loading'}>{status === 'loading' ? 'Loading…' : 'Check weather'}</Button></div>}
+    {weather ? <div className="m-dashboard-weather"><div><span className="m-weather-symbol">{weatherDescription(weather.weather_code)[1]}</span><b>{Math.round(weather.temperature_2m)}°C</b><small>{weatherDescription(weather.weather_code)[0]} · {weather.place.name}</small></div><div><span>Humidity</span><b>{weather.relative_humidity_2m}%</b></div><div><span>Rain chance today</span><b>{weather.rainChance ?? '—'}%</b></div><div><span>Wind</span><b>{weather.wind_speed_10m} km/h</b></div><small className="m-live-label">LIVE FORECAST · OPEN-METEO</small></div> : <div className="m-weather-empty"><span>☼</span><p><b>{status === 'loading' ? 'Checking current forecast…' : 'Live weather is not loaded'}</b><small>{error || `Fetch current conditions for ${location}. No sample weather is shown.`}</small></p><Button variant="light" onClick={() => loadWeather()} disabled={status === 'loading'}>{status === 'loading' ? 'Loading…' : 'Try again'}</Button></div>}
   </Card>
 }
 
