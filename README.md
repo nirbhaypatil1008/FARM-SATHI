@@ -20,10 +20,11 @@ The web app is at `http://localhost:5173`; the API is at `http://localhost:5000`
 - Live seven-day weather from Open-Meteo (internet required, no key needed).
 - Express API with SQLite accounts and conversation history, scrypt password hashes, JWT auth, request validation, rate limiting, and protected history.
 - Gemini context-aware chat with server-sent event streaming, saved conversations, new/delete, retry, and copy controls.
+- Authenticated Crop Doctor with Gemini multimodal visual screening, private SQLite diagnosis history, validated image uploads, and ownership-checked image access. Results are provisional visual guidance, not confirmed diagnoses.
 - Browser-native speech recognition and speech output with language selector, microphone permission/error messaging, pause/resume and stop. Actual language availability depends on the browser and installed voices.
 - Official external portal links for schemes, crop insurance and mandi data; these features are not represented as connected feeds.
 
-Farm profile and crop records stay in this browser. Chat account data/history are stored in the local backend SQLite file. Do not store sensitive identity or financial-account details. This is a local development MVP, not a production deployment.
+Farm profile and crop records stay in this browser. Chat and Crop Doctor account data/history are stored in the local backend SQLite file; crop images are saved under the ignored `server/data/` directory. Crop images are sent to Google Gemini for visual assessment. Reports are not agronomist-confirmed and confidence is not calibrated. Do not store sensitive identity or financial-account details. This is a local development MVP, not a production deployment.
 
 ## Configuration, external APIs, and testing
 

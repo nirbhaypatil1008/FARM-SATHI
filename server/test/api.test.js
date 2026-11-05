@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import { after, before, test } from 'node:test'
 
@@ -11,6 +11,7 @@ process.env.GEMINI_API_KEY = ''
 const { app } = await import('../src/app.js')
 const { database } = await import('../src/db.js')
 const { config } = await import('../src/config.js')
+const { parsePlantDiagnosis } = await import('../src/gemini.js')
 
 let server
 let baseUrl
@@ -34,11 +35,28 @@ async function request(path, { token, ...options } = {}) {
   return fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   })
+}
+
+async function createAccount(label = 'Crop Doctor Farmer') {
+  const response = await request('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ name: label, email: `${randomBytes(5).toString('hex')}@example.test`, password: 'secure-password-123' }),
+  })
+  assert.equal(response.status, 201)
+  return (await response.json()).token
+}
+
+function cropImageForm({ buffer, mime = 'image/png', filename = 'plant.png' }) {
+  const form = new FormData()
+  form.set('cropName', 'Tomato')
+  form.set('observations', 'Spots visible on two leaves.')
+  form.set('image', new Blob([buffer], { type: mime }), filename)
+  return form
 }
 
 test('health reports SQLite and whether Gemini is configured without exposing credentials', async () => {
@@ -122,4 +140,120 @@ test('invalid input receives a useful validation response', async () => {
   })
   assert.equal(response.status, 400)
   assert.match((await response.json()).error, /valid email/)
+})
+
+test('Crop Doctor rejects unauthenticated, unsupported, malformed, and oversized uploads without a Gemini key', async () => {
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  const unauthenticated = await request('/api/crop-doctor/diagnose', {
+    method: 'POST',
+    body: cropImageForm({ buffer: pngSignature }),
+  })
+  assert.equal(unauthenticated.status, 401)
+
+  const token = await createAccount()
+  const unsupported = await request('/api/crop-doctor/diagnose', {
+    method: 'POST',
+    token,
+    body: cropImageForm({ buffer: Buffer.from('not an image'), mime: 'text/plain', filename: 'notes.txt' }),
+  })
+  assert.equal(unsupported.status, 400)
+  assert.match((await unsupported.json()).error, /JPG, PNG, or WEBP/)
+
+  const malformed = await request('/api/crop-doctor/diagnose', {
+    method: 'POST',
+    token,
+    body: cropImageForm({ buffer: Buffer.from('not really a png') }),
+  })
+  assert.equal(malformed.status, 400)
+  assert.match((await malformed.json()).error, /valid image/)
+
+  const oversized = await request('/api/crop-doctor/diagnose', {
+    method: 'POST',
+    token,
+    body: cropImageForm({ buffer: Buffer.alloc(5 * 1024 * 1024 + 1) }),
+  })
+  assert.equal(oversized.status, 413)
+
+  const missingKey = await request('/api/crop-doctor/diagnose', {
+    method: 'POST',
+    token,
+    body: cropImageForm({ buffer: pngSignature }),
+  })
+  assert.equal(missingKey.status, 503)
+  assert.match((await missingKey.json()).error, /GEMINI_API_KEY/)
+  const history = await request('/api/crop-doctor/history', { token })
+  assert.deepEqual((await history.json()).diagnoses, [])
+})
+
+test('Crop Doctor history, images, and deletion are scoped to the authenticated farmer', async () => {
+  const ownerToken = await createAccount('Diagnosis Owner')
+  const otherToken = await createAccount('Other Farmer')
+  const owner = await request('/api/auth/me', { token: ownerToken })
+  const { user } = await owner.json()
+  const diagnosisId = randomUUID()
+  const result = {
+    assessment: 'uncertain',
+    plantName: 'Tomato',
+    diseaseName: 'Unable to determine from this image',
+    confidence: 20,
+    severity: 'unknown',
+  }
+  database.prepare(`
+    INSERT INTO crop_diagnoses
+      (id, user_id, crop_name, disease_name, image_filename, image_mime_type, confidence, severity, result_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(diagnosisId, user.id, 'Tomato', result.diseaseName, `${diagnosisId}.png`, 'image/png', result.confidence, result.severity, JSON.stringify(result))
+
+  const ownerHistory = await request('/api/crop-doctor/history', { token: ownerToken })
+  const ownerDiagnoses = (await ownerHistory.json()).diagnoses
+  assert.equal(ownerDiagnoses.length, 1)
+  assert.equal(ownerDiagnoses[0].id, diagnosisId)
+  assert.equal(ownerDiagnoses[0].diseaseName, result.diseaseName)
+
+  const otherHistory = await request('/api/crop-doctor/history', { token: otherToken })
+  assert.deepEqual((await otherHistory.json()).diagnoses, [])
+  const otherImage = await request(`/api/crop-doctor/history/${diagnosisId}/image`, { token: otherToken })
+  assert.equal(otherImage.status, 404)
+  const otherDelete = await request(`/api/crop-doctor/history/${diagnosisId}`, { method: 'DELETE', token: otherToken })
+  assert.equal(otherDelete.status, 404)
+
+  const ownerDelete = await request(`/api/crop-doctor/history/${diagnosisId}`, { method: 'DELETE', token: ownerToken })
+  assert.equal(ownerDelete.status, 204)
+})
+
+test('Crop Doctor structures uncertain model responses and strips unsafe treatment advice', () => {
+  const assessment = {
+    assessment: 'identified',
+    plantName: 'Tomato',
+    diseaseName: 'Possible leaf spot',
+    confidence: 35,
+    severity: 'moderate',
+    symptoms: ['Small brown spots are visible.'],
+    visibleSigns: ['Spots on the photographed leaf.'],
+    possibleCauses: ['Several causes can look similar.'],
+    conduciveConditions: ['High humidity may contribute.'],
+    immediateActions: ['Apply fungicide at 5 ml per litre.'],
+    farmingPractices: ['Improve airflow and avoid overhead irrigation.'],
+    organicOptions: ['Use a plant spray.'],
+    prevention: ['Clean field tools between plants.'],
+    irrigationAndSoil: ['Avoid waterlogging.'],
+    preventSpread: ['Avoid handling wet foliage.'],
+    reinspectInDays: 5,
+    professionalHelp: ['Consult a local extension officer.'],
+  }
+  const result = parsePlantDiagnosis(JSON.stringify(assessment))
+  assert.equal(result.assessment, 'uncertain')
+  assert.equal(result.diseaseName, 'Unable to determine from this image')
+  assert.equal(result.confidence, 35)
+  assert.equal(result.severity, 'unknown')
+  assert.deepEqual(result.symptoms, [])
+  assert.deepEqual(result.immediateActions, ['Take a closer, well-lit photo of one affected leaf and the whole plant.'])
+
+  assessment.confidence = 80
+  const identified = parsePlantDiagnosis(JSON.stringify(assessment))
+  assert.equal(identified.assessment, 'identified')
+  assert.deepEqual(identified.immediateActions, [])
+  assert.deepEqual(identified.organicOptions, [])
+  assert.deepEqual(identified.farmingPractices, ['Improve airflow and avoid overhead irrigation.'])
+  assert.throws(() => parsePlantDiagnosis('not json'), /invalid result/)
 })

@@ -530,30 +530,202 @@ function BudgetPage() {
 }
 
 function DiseasePage() {
-  const { crops, observations, setObservations } = useFarm()
-  const [cropId, setCropId] = useState('')
-  const [imageName, setImageName] = useState('')
-  const [imageUrl, setImageUrl] = useState('')
-  const [note, setNote] = useState('')
-  const [saved, setSaved] = useState(false)
-  const [photoData, setPhotoData] = useState('')
-  const [photoError, setPhotoError] = useState('')
-  const loadImage = (file) => {
-    if (imageUrl) URL.revokeObjectURL(imageUrl)
-    if (!file) { setImageUrl(''); setPhotoData(''); setImageName(''); return }
-    setImageName(file.name); setImageUrl(URL.createObjectURL(file)); setSaved(false); setPhotoError('')
-    imageToDataUrl(file).then(setPhotoData).catch((error) => { console.error('Could not process disease observation photo.', error); setPhotoError(error.message || 'Photo could not be saved. Choose a smaller image.') })
+  const { crops } = useFarm()
+  const token = localStorage.getItem(CHAT_TOKEN_KEY) || ''
+  const [cropName, setCropName] = useState('')
+  const [observations, setObservations] = useState('')
+  const [file, setFile] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState('')
+  const [diagnoses, setDiagnoses] = useState([])
+  const [selectedDiagnosis, setSelectedDiagnosis] = useState(null)
+  const [reportImage, setReportImage] = useState('')
+  const [historyStatus, setHistoryStatus] = useState(token ? 'loading' : 'signed-out')
+  const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [error, setError] = useState('')
+  const [historyError, setHistoryError] = useState('')
+  const [cropFilter, setCropFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState('')
+
+  const refreshHistory = useCallback(async (signal) => {
+    if (!token) return
+    try {
+      const response = await fetch('/api/crop-doctor/history', { headers: { Authorization: `Bearer ${token}` }, signal })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || `Could not load diagnosis history (${response.status}).`)
+      setDiagnoses(body.diagnoses)
+      setHistoryError('')
+      setHistoryStatus('ready')
+    } catch (requestError) {
+      if (signal?.aborted) return
+      setHistoryError(requestError.message || 'Could not load diagnosis history. Check your connection.')
+      setHistoryStatus('error')
+    }
+  }, [token])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    Promise.resolve().then(() => refreshHistory(controller.signal))
+    return () => controller.abort()
+  }, [refreshHistory])
+
+  useEffect(() => {
+    if (!previewUrl) return undefined
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [previewUrl])
+
+  const selectedDiagnosisId = selectedDiagnosis?.id
+  useEffect(() => {
+    if (!selectedDiagnosisId || !token) return undefined
+    let active = true
+    let objectUrl = ''
+    const controller = new AbortController()
+    fetch(`/api/crop-doctor/history/${selectedDiagnosisId}/image`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}))
+          throw new Error(body.error || 'Could not load the saved diagnosis image.')
+        }
+        return response.blob()
+      })
+      .then((blob) => {
+        if (!active) return
+        objectUrl = URL.createObjectURL(blob)
+        setReportImage({ id: selectedDiagnosisId, url: objectUrl })
+      })
+      .catch((requestError) => {
+        if (active && !controller.signal.aborted) {
+          console.error('Could not load the saved Crop Doctor image.', requestError)
+          setReportImage({ id: selectedDiagnosisId, error: requestError.message || 'Could not load the saved image.' })
+        }
+      })
+    return () => {
+      active = false
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [selectedDiagnosisId, token])
+
+  const chooseImage = (selectedFile) => {
+    setError('')
+    if (!selectedFile) return
+    const supportedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!supportedTypes.includes(selectedFile.type)) {
+      setFile(null)
+      setPreviewUrl('')
+      return setError('Choose a JPG, PNG, or WEBP image.')
+    }
+    if (selectedFile.size > 5 * 1024 * 1024) {
+      setFile(null)
+      setPreviewUrl('')
+      return setError('Choose an image smaller than 5 MB.')
+    }
+    setPreviewUrl(URL.createObjectURL(selectedFile))
+    setFile(selectedFile)
+    setSelectedDiagnosis(null)
   }
-  const saveReport = () => {
-    if (!cropId || !note.trim()) return
-    if (imageName && !photoData) return setPhotoError('Wait for the photo to finish processing, or save the observation without a photo.')
-    setObservations((items) => [{ id: crypto.randomUUID(), cropId, date: dateToday(), text: `Crop concern: ${note.trim()}${imageName ? ` (photo: ${imageName})` : ''}`, photo: photoData || undefined }, ...items])
-    setSaved(true)
+
+  const submitImage = async (event) => {
+    event.preventDefault()
+    if (!token) return setError('Sign in before running a private crop diagnosis.')
+    if (!file) return setError('Take or choose a plant image first.')
+    if (!cropName.trim()) return setError('Enter the crop shown in the photo.')
+    setLoading(true)
+    setProgress(0)
+    setError('')
+    try {
+      const diagnosis = await uploadCropImage({ token, file, cropName, observations, onProgress: setProgress })
+      setSelectedDiagnosis(diagnosis)
+      setFile(null)
+      setPreviewUrl('')
+      await refreshHistory()
+    } catch (requestError) {
+      setError(requestError.message || 'Analysis failed. Check your connection and try again.')
+    } finally {
+      setLoading(false)
+    }
   }
-  return <div className="m-page"><Heading eyebrow="Crop Doctor" title="Record a crop concern" detail="No disease-detection model is connected. This page will not guess a disease or recommend chemicals." />
-    <div className="m-dashboard-columns"><Card><h2>Describe what you see</h2><label className="m-field-label">Affected crop<select value={cropId} onChange={(e) => setCropId(e.target.value)}><option value="">Choose a registered crop</option>{crops.map((crop) => <option key={crop.id} value={crop.id}>{crop.name} · {crop.field || 'Field'}</option>)}</select></label><label className="m-upload">Take or choose a crop photo<input type="file" accept="image/*" capture="environment" onChange={(e) => loadImage(e.target.files?.[0])} /><span>{imageName || 'Choose a clear, well-lit image'}</span></label>{imageUrl && <img className="m-preview-image" src={imageUrl} alt="Selected crop for observation" />}{photoError && <p className="m-error" role="alert">{photoError}</p>}<label className="m-field-label">Symptoms or observations<textarea rows="4" value={note} onChange={(e) => { setNote(e.target.value); setSaved(false) }} placeholder="Describe the visible changes. Avoid applying pesticides based only on an online guess." /></label><Button type="button" onClick={saveReport} disabled={!cropId || !note.trim() || Boolean(imageName && !photoData)}>Save observation</Button>{saved && <p className="m-success" role="status">Observation saved to the crop record. This is not an AI diagnosis.</p>}</Card><Card><span className="m-eyebrow">Status</span><h2>AI image analysis is not connected</h2><p>There is no vision service or agronomist review available in this app yet. If the crop is rapidly worsening, take the photo and observation to your local agriculture extension office.</p><p className="m-warning">Do not mix or apply pesticides without following the product label and qualified local guidance. Never use an image-only dosage recommendation.</p></Card></div>
-    {observations.length > 0 && <Card><h2>Crop history observations</h2>{observations.map((item) => <div className="m-history" key={item.id}><b>{item.date}</b><span>{crops.find((crop) => crop.id === item.cropId)?.name || 'Crop'} · {item.text}{item.photo && <img className="m-history-photo" src={item.photo} alt={`Crop observation from ${item.date}`} />}</span></div>)}</Card>}
+
+  const removeDiagnosis = async (diagnosis) => {
+    if (!window.confirm('Delete this diagnosis and its saved image?')) return
+    try {
+      const response = await fetch(`/api/crop-doctor/history/${diagnosis.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || `Could not delete diagnosis (${response.status}).`)
+      setDiagnoses((items) => items.filter((item) => item.id !== diagnosis.id))
+      if (selectedDiagnosis?.id === diagnosis.id) setSelectedDiagnosis(null)
+      setHistoryError('')
+    } catch (requestError) {
+      setHistoryError(requestError.message || 'Could not delete this diagnosis. Try again.')
+    }
+  }
+
+  const filteredDiagnoses = diagnoses.filter((diagnosis) =>
+    (!cropFilter || diagnosis.plantName.toLowerCase() === cropFilter.toLowerCase())
+    && (!dateFilter || diagnosis.createdAt.slice(0, 10) === dateFilter))
+
+  return <div className="m-page">
+    <Heading eyebrow="AI Crop Doctor" title="Check a crop from a photo" detail="Gemini vision provides a cautious visual screening. It is not a laboratory result or an agronomist-confirmed diagnosis." />
+    {!token ? <Card className="m-doctor-signin"><span className="m-crop-doctor-icon">✚</span><div><h2>Sign in to analyze and save reports</h2><p>Crop images and diagnosis history are private to your account. Sign in or create an account to continue.</p><NavLink className="m-button primary" to="/ai-assistant">Sign in to Farm Assistant</NavLink></div></Card> : <>
+      <Card>
+        <form className="m-doctor-form" onSubmit={submitImage}>
+          <label className="m-field-label">Crop in the photo<input list="registered-crops" value={cropName} onChange={(event) => setCropName(event.target.value)} maxLength={80} placeholder="e.g. Tomato, potato, rice" required /><datalist id="registered-crops">{crops.map((crop) => <option key={crop.id} value={crop.name} />)}</datalist></label>
+          <div className="m-doctor-upload">
+            {previewUrl ? <img src={previewUrl} alt="Selected plant for AI visual screening" /> : <div className="m-doctor-placeholder"><span>♧</span><b>Choose a clear photo of the affected plant</b><small>Include the whole plant and a close-up of affected leaves when possible.</small></div>}
+            <div className="m-doctor-upload-actions">
+              <label className="m-button primary">Take a photo<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { chooseImage(event.target.files?.[0]); event.target.value = '' }} /></label>
+              <label className="m-button light">Upload image<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { chooseImage(event.target.files?.[0]); event.target.value = '' }} /></label>
+              {file && <><span className="m-muted">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</span><button className="m-delete" type="button" onClick={() => { setFile(null); setPreviewUrl(''); setProgress(0) }}>Remove image</button></>}
+            </div>
+          </div>
+          <label className="m-field-label">What changes have you noticed? (optional)<textarea rows="3" maxLength="800" value={observations} onChange={(event) => setObservations(event.target.value)} placeholder="For example: spots began on older leaves after several rainy days." /></label>
+          {loading && <div className="m-doctor-progress" role="status"><div><b>{progress < 100 ? 'Uploading image securely…' : 'Gemini is reviewing visible plant signs…'}</b><span>{progress}% uploaded</span></div><progress max="100" value={progress} /><small>The image is sent to Google's Gemini service for a structured visual assessment. If camera access is unavailable, allow camera permission or use Upload image.</small></div>}
+          {error && <p className="m-error" role="alert">{error}</p>}
+          <Button type="submit" disabled={loading || !file}>{loading ? 'Analyzing…' : 'Analyze plant image'}</Button>
+        </form>
+      </Card>
+      {selectedDiagnosis && <DiagnosisReport diagnosis={selectedDiagnosis} imageUrl={reportImage?.id === selectedDiagnosis.id ? reportImage.url || '' : ''} imageError={reportImage?.id === selectedDiagnosis.id ? reportImage.error || '' : ''} onClose={() => setSelectedDiagnosis(null)} />}
+      <Card>
+        <div className="m-section-title"><div><span className="m-eyebrow">Private to your account</span><h2>Diagnosis history</h2></div><button className="m-plain-action" type="button" onClick={refreshHistory} disabled={historyStatus === 'loading'}>Refresh</button></div>
+        {historyError && <p className="m-error" role="alert">{historyError}</p>}
+        {historyStatus === 'loading' ? <p className="m-muted">Loading saved diagnoses…</p> : historyStatus === 'error' ? null : diagnoses.length ? <>
+          <div className="m-doctor-filters"><label>Crop<select value={cropFilter} onChange={(event) => setCropFilter(event.target.value)}><option value="">All crops</option>{[...new Set(diagnoses.map((item) => item.plantName))].map((plant) => <option key={plant}>{plant}</option>)}</select></label><label>Diagnosis date<input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></label></div>
+          {filteredDiagnoses.length ? <div className="m-doctor-history">{filteredDiagnoses.map((diagnosis) => <article key={diagnosis.id}><span className={`m-doctor-severity ${diagnosis.severity}`}>{diagnosis.severity === 'unknown' ? 'Uncertain' : diagnosis.severity}</span><div><b>{diagnosis.plantName} · {diagnosis.diseaseName}</b><small>{new Date(diagnosis.createdAt).toLocaleString()} · model-estimated confidence {diagnosis.confidence}%</small></div><button type="button" onClick={() => setSelectedDiagnosis(diagnosis)}>View report</button><button type="button" className="m-delete" onClick={() => removeDiagnosis(diagnosis)}>Delete</button></article>)}</div> : <p className="m-muted">No diagnoses match these filters.</p>}
+        </> : <EmptyState title="No diagnoses saved yet" detail="After you analyze a plant photo, its private report and image will appear here." />}
+      </Card>
+      <p className="m-warning">AI visual screening can be wrong and cannot confirm pathogens from an image. Confidence is a model estimate, not a calibrated probability. Do not apply pesticide based only on this report; follow the product label and consult a qualified local agriculture professional.</p>
+    </>}
   </div>
+}
+
+function DiagnosisReport({ diagnosis, imageUrl, imageError, onClose }) {
+  const listSection = (title, items) => items?.length ? <section><h3>{title}</h3><ul>{items.map((item, index) => <li key={`${title}-${index}`}>{item}</li>)}</ul></section> : null
+  const uncertain = diagnosis.assessment !== 'identified'
+  return <Card className="m-doctor-report">
+    <div className="m-section-title"><div><span className="m-eyebrow">Visual screening · {new Date(diagnosis.createdAt).toLocaleString()}</span><h2>Assessment for {diagnosis.plantName}</h2></div><button type="button" className="m-plain-action" onClick={onClose}>Close</button></div>
+    <div className="m-doctor-report-main">{imageUrl ? <img src={imageUrl} alt={`Saved plant photo for ${diagnosis.plantName}`} /> : <span className="m-doctor-image-placeholder">{imageError || 'Loading private image…'}</span>}
+      <div><span className={`m-doctor-severity ${diagnosis.severity}`}>{diagnosis.severity === 'unknown' ? 'Uncertain' : `${diagnosis.severity} severity`}</span><h3>{diagnosis.diseaseName}</h3><p>Model-estimated confidence: <b>{diagnosis.confidence}%</b></p><small>Not calibrated and not a confirmed diagnosis.</small></div>
+    </div>
+    {uncertain && <p className="m-doctor-uncertain" role="status">The image did not provide enough evidence for a reliable disease assessment. Try a close, well-lit photo of one affected leaf and a second photo of the whole plant.</p>}
+    <div className="m-doctor-report-grid">
+      {listSection('Visible symptoms', diagnosis.symptoms)}
+      {listSection('Visible signs in this photo', diagnosis.visibleSigns)}
+      {listSection('Possible causes to consider', diagnosis.possibleCauses)}
+      {listSection('Conditions that may encourage it', diagnosis.conduciveConditions)}
+      {listSection('Immediate low-risk steps', diagnosis.immediateActions)}
+      {listSection('Farm practices', diagnosis.farmingPractices)}
+      {listSection('Organic options to discuss locally', diagnosis.organicOptions)}
+      {listSection('Prevention', diagnosis.prevention)}
+      {listSection('Irrigation and soil care', diagnosis.irrigationAndSoil)}
+      {listSection('Reduce possible spread', diagnosis.preventSpread)}
+      {diagnosis.reinspectInDays && <section><h3>Reinspect</h3><p>Check the plant again in about {diagnosis.reinspectInDays} days.</p></section>}
+      {listSection('Seek professional help', diagnosis.professionalHelp)}
+    </div>
+    <p className="m-warning">AI-generated visual guidance only—not verified agricultural advice. No pesticide dosage is provided. Confirm any treatment with your local agriculture extension officer and product label.</p>
+  </Card>
 }
 
 function SoilWaterPage() {
@@ -610,6 +782,37 @@ async function apiRequest(path, { token, ...options } = {}) {
     throw new Error(body.error || `Request failed (${response.status}).`)
   }
   return response.status === 204 ? null : response.json()
+}
+
+function uploadCropImage({ token, file, cropName, observations, onProgress }) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('POST', '/api/crop-doctor/diagnose')
+    request.timeout = 120_000
+    request.setRequestHeader('Authorization', `Bearer ${token}`)
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100))
+    }
+    request.onload = () => {
+      let body
+      try {
+        body = JSON.parse(request.responseText)
+      } catch {
+        return reject(new Error('The server returned an invalid response. Please try again.'))
+      }
+      if (request.status < 200 || request.status >= 300) return reject(new Error(body.error || `Image analysis failed (${request.status}).`))
+      onProgress(100)
+      return resolve(body.diagnosis)
+    }
+    request.onerror = () => reject(new Error('Could not reach the server. Check your internet connection and try again.'))
+    request.ontimeout = () => reject(new Error('Image analysis timed out. Try again with a smaller or clearer image.'))
+    request.onabort = () => reject(new Error('Image upload was cancelled.'))
+    const form = new FormData()
+    form.append('cropName', cropName.trim())
+    form.append('observations', observations.trim())
+    form.append('image', file, file.name)
+    request.send(form)
+  })
 }
 
 async function lookupWeatherForChat(location) {

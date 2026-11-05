@@ -4,13 +4,13 @@
 
 | Integration | Purpose | Credential | Where configured |
 |---|---|---|---|
-| Google Gemini Developer API (`@google/genai`) | Authenticated, context-aware text chat; server-streamed replies | `GEMINI_API_KEY` from Google AI Studio | `server/.env` only |
+| Google Gemini Developer API (`@google/genai`) | Authenticated text chat and structured multimodal Crop Doctor visual screening | `GEMINI_API_KEY` from Google AI Studio | `server/.env` only |
 | Open-Meteo Geocoding + Forecast APIs | Location lookup and current/seven-day weather | No API key for the current public endpoint | Browser requests via the app's Weather page and dashboard |
 | Browser Web Speech API | Speech recognition where available | No app API key; browser permission/provider support required | Browser/device |
 | Browser SpeechSynthesis API | Spoken AI replies with pause/resume/stop | No app API key; installed system voices required | Browser/device |
-| SQLite (`better-sqlite3`) | Local accounts, conversation history and messages | No separate database credentials | `server/.env` `DATABASE_PATH` |
+| SQLite (`better-sqlite3`) | Local accounts, chat and private diagnosis history | No separate database credentials | `server/.env` `DATABASE_PATH` |
 
-Maps, Agmarknet prices, OpenWeather, Gemini image diagnosis, cloud speech transcription, MySQL and a separate Python AI service are **not integrated**. No keys or configuration are needed for those unimplemented integrations. The app links to official mandi/scheme portals rather than claiming to show connected live data.
+Maps, Agmarknet prices, OpenWeather, cloud speech transcription, MySQL and a separate Python AI service are **not integrated**. The Crop Doctor is a Gemini multimodal visual screening aid, not a dedicated or clinically/agronomically validated classifier; it cannot confirm pathogens. The app links to official mandi/scheme portals rather than claiming to show connected live data.
 
 ## Requirements and installation
 
@@ -59,7 +59,7 @@ The API starts without a Gemini key so health, registration, login and local his
 3. Configure `GEMINI_API_KEY` in `server/.env`, not in the web app.
 4. Configure `GEMINI_MODEL` to a model available to your account. The default is `gemini-2.5-flash`.
 5. Restart the backend. Check `GET http://localhost:5000/api/health`; `gemini.configured` should be `true`.
-6. Create an account on the Assistant page, then ask a question.
+6. Create an account on the Assistant page to use chat and Crop Doctor, then ask a question or submit a crop image.
 
 Google model availability, pricing, quota and data handling depend on account, region, model and current Google terms. Review Google's official pricing and rate-limit pages before use:
 
@@ -68,6 +68,25 @@ Google model availability, pricing, quota and data handling depend on account, r
 - <https://ai.google.dev/gemini-api/terms>
 
 The backend sends a bounded context assembled from the logged-in farmer's browser records (profile, crops/stages, observations, tasks and expense categories). Context is user-provided and may be incomplete. Conversations are stored in the local SQLite database. Do not enter sensitive personal, financial-account or identity-document data.
+
+## Crop Doctor image screening
+
+Crop Doctor uses the same server-side Gemini key and configured model; no separate vision credential is required. Gemini models must support image input and structured JSON output. The current default `gemini-2.5-flash` supports multimodal input; confirm the selected model's current availability for your account before deployment.
+
+- Sign in or create an account through Farm Assistant, then open **Crop Doctor**.
+- Choose a crop, capture a photo with the device camera, or upload a JPG/JPEG, PNG or WEBP image (maximum 5 MB).
+- The backend verifies the upload MIME type and file signature, enforces a six-analysis-per-minute rate limit, and sends the image to Gemini for a constrained structured visual assessment.
+- Analysis includes visible signs and cautious possible causes, with practical low-risk steps. It does not provide chemical names/doses, confirm a pathogen, or claim to be agronomist-reviewed. Confidence is a model estimate, not a calibrated probability. Unclear/non-plant images result in an explicit uncertain response and re-photo guidance.
+- Diagnosis records are stored in `crop_diagnoses` in the configured SQLite database. Uploaded images are stored outside the public web root under `server/data/crop-diagnoses/`, use generated filenames, and are served only after an ownership check. Deleting a diagnosis removes its saved image. The entire `server/data/` directory is ignored by Git.
+- The uploaded image and optional observation text are sent to Google for model processing. Review Google's current [API terms](https://ai.google.dev/gemini-api/terms) and data policies before using real farmer images. Do not upload sensitive people, identity documents, or unrelated private information.
+- A valid Gemini key and internet access are required for an actual assessment. Missing keys, invalid model responses, unclear images, or network/provider failures produce errors rather than mock diagnoses.
+
+Authenticated routes:
+
+- `POST /api/crop-doctor/diagnose` — multipart fields `image`, `cropName`, and optional `observations`.
+- `GET /api/crop-doctor/history` — the signed-in farmer's last 100 diagnosis reports.
+- `GET /api/crop-doctor/history/:id/image` — an owned report image; requires a Bearer token.
+- `DELETE /api/crop-doctor/history/:id` — delete an owned report and its image.
 
 ## Weather API
 
@@ -112,8 +131,8 @@ npm run lint
 npm --prefix server test
 ```
 
-The backend tests cover health/config reporting, account registration and login, authorization, SQLite history, conversation ownership, missing-key errors, and stream error handling. A real Gemini generation requires a valid key and available model; the test suite never fabricates a successful Gemini reply.
+The backend tests cover health/config reporting, account registration and login, authorization, SQLite history, conversation ownership, missing-key errors, stream error handling, upload type/signature/size validation, and Crop Doctor history ownership. A live Gemini text or image generation requires a valid key and available model; the test suite never fabricates a successful model reply.
 
 ## Features without credentials
 
-Profile/farm records, crop plans, crop stages/observations, expenses, calendar tasks, EMI calculation, local auth/chat history, official portal links, and browser speech (where supported) work without provider keys. Live weather works without a key but requires internet. Real Gemini answers require a valid server-side Gemini key. Maps, live mandi values, vision diagnosis and push notifications remain unavailable until their integrations are separately implemented.
+Profile/farm records, crop plans, crop stages/observations, expenses, calendar tasks, EMI calculation, local auth/chat history, official portal links, and browser speech (where supported) work without provider keys. Live weather works without a key but requires internet. Real Gemini chat and Crop Doctor visual screening require a valid server-side Gemini key. Maps, live mandi values and push notifications remain unavailable until their integrations are separately implemented.
