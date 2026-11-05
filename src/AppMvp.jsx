@@ -229,9 +229,16 @@ function App() {
 function Dashboard() {
   const { profile, crops, expenses, tasks, language, demoMode, setDemoMode, setProfile, setCrops, setExpenses, setTasks, setObservations } = useFarm()
   const navigate = useNavigate()
+  const welcomeVideoRef = useRef(null)
   const pending = tasks.filter((task) => !task.done).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4)
   const expenseTotal = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0)
   const remainingBudget = Math.max(0, Number(profile?.budget || 0) - expenseTotal)
+  useEffect(() => {
+    const video = welcomeVideoRef.current
+    if (!video || window.matchMedia('(prefers-reduced-motion: reduce)').matches || navigator.connection?.saveData) return
+    video.play().catch(() => {})
+    return () => video.pause()
+  }, [])
   const resetDemo = () => {
     if (!window.confirm('Replace all saved farm records in this browser with the sample project data?')) return
     setProfile(demoProfile)
@@ -254,8 +261,10 @@ function Dashboard() {
   return <div className="m-page">
     {demoMode && <div className="m-demo-banner"><span><b>PROJECT SAMPLE DATA</b><small>Example farm details, crops, tasks and expenses. Not real farmer records.</small></span><Button variant="light" onClick={() => navigate('/profile')}>Edit sample profile</Button><Button variant="light" onClick={resetDemo}>Reset samples</Button><Button variant="light" onClick={startWithOwnData}>Enter my own farm</Button></div>}
     <div className="m-welcome">
-      <div><span className="m-eyebrow">{t('Welcome to Farm Saathi', language)}</span><h1>Namaste, {profile.name} <span>👋</span></h1><p>Your farm companion for the season ahead.</p><div className="m-welcome-meta"><span>⌖ {profile.village || profile.district}, {profile.state}</span><span>▣ {profile.landSize} {profile.landUnit}</span><span>♧ {profile.soil || 'Soil not recorded'} soil</span></div></div>
-      <div className="m-welcome-art" aria-hidden="true"><div className="m-sun"></div><span>🌱</span><b>Growing together</b></div>
+      <video ref={welcomeVideoRef} className="m-welcome-video" muted loop playsInline preload="none" role="presentation">
+        <source src="https://videos.pexels.com/video-files/11785195/11785195-sd_960_540_30fps.mp4" type="video/mp4" />
+      </video>
+      <div className="m-welcome-content"><span className="m-eyebrow">{t('Welcome to Farm Saathi', language)}</span><h1>Namaste, {profile.name} <span>👋</span></h1><p>Your farm companion for the season ahead.</p><div className="m-welcome-meta"><span>⌖ {profile.village || profile.district}, {profile.state}</span><span>▣ {profile.landSize} {profile.landUnit}</span><span>♧ {profile.soil || 'Soil not recorded'} soil</span></div><a className="m-welcome-credit" href="https://www.pexels.com/video/men-working-on-field-11785195/" target="_blank" rel="noreferrer">Video: Thakor Kaushik / Pexels</a></div>
     </div>
     <section className="m-quick-grid">
       {[['Plan a crop', 'Compare options using farm details.', '/crop-analyzer', '◈', 'mint'], ['Track a crop', 'Update field stages and observations.', '/crop-growth', '↗', 'yellow'], ['Check weather', 'Get the latest forecast for this area.', '/weather', '☼', 'blue'], ['Ask the assistant', 'Summarize your records with the offline guide.', '/ai-assistant', '☏', 'peach'], ['Crop Doctor', 'Save a crop photo and describe a concern.', '/crop-doctor', '✚', 'mint'], ['Mandi prices', 'Open the official source for current rates.', '/market-price', '₹', 'yellow'], ['Expenses', 'Record costs and see category totals.', '/expenses', '▤', 'blue'], ['Farm calendar', 'Add and complete field reminders.', '/calendar', '▦', 'peach']].map(([title, detail, path, icon, color]) => <button key={title} className={`m-quick-card ${color}`} onClick={() => navigate(path)}><span>{icon}</span><b>{title}</b><small>{detail}</small><i>Open →</i></button>)}
