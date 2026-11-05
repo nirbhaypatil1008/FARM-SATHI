@@ -300,6 +300,7 @@ function FloatingAssistant() {
 function Dashboard() {
   const { profile, crops, expenses, tasks, observations, language, demoMode, setDemoMode, setProfile, setCrops, setExpenses, setTasks, setObservations } = useFarm()
   const navigate = useNavigate()
+  const welcomeVideoRef = useRef(null)
   const pending = tasks.filter((task) => !task.done).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4)
   const openTasks = tasks.filter((task) => !task.done)
   const expenseTotal = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0)
@@ -315,6 +316,13 @@ function Dashboard() {
   })
   const distributionBackground = cropSegments.length ? `conic-gradient(${cropSegments.map((crop) => crop.segment).join(', ')})` : 'conic-gradient(rgba(255,255,255,.13) 0% 100%)'
   const todayLabel = new Intl.DateTimeFormat(language === 'kn' ? 'kn-IN' : 'en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(sessionDate)
+  const remainingBudget = Math.max(0, Number(profile?.budget || 0) - expenseTotal)
+  useEffect(() => {
+    const video = welcomeVideoRef.current
+    if (!video || window.matchMedia('(prefers-reduced-motion: reduce)').matches || navigator.connection?.saveData) return
+    video.play().catch(() => {})
+    return () => video.pause()
+  }, [])
   const resetDemo = () => {
     if (!window.confirm('Replace all saved farm records in this browser with the sample project data?')) return
     setProfile(demoProfile)
@@ -337,32 +345,23 @@ function Dashboard() {
   return <div className="m-page">
     {demoMode && <div className="m-demo-banner"><span><b>PROJECT SAMPLE DATA</b><small>Example farm details, crops, tasks and expenses. Not real farmer records.</small></span><Button variant="light" onClick={() => navigate('/profile')}>Edit sample profile</Button><Button variant="light" onClick={resetDemo}>Reset samples</Button><Button variant="light" onClick={startWithOwnData}>Enter my own farm</Button></div>}
     <div className="m-welcome">
-      <div className="m-welcome-copy"><span className="m-eyebrow">{todayLabel} · FARM OVERVIEW</span><h1>Welcome back, {profile.name.split(' ')[0]} <span>👋</span></h1><p>Your fields are ready for another day of thoughtful growing.</p><div className="m-welcome-meta"><span>⌖ {profile.village || profile.district}, {profile.state}</span><span>▣ {profile.landSize} {profile.landUnit} registered</span></div><div className="m-welcome-actions"><Button onClick={() => navigate('/crop-growth')}>＋ Add crop record</Button><NavLink className="m-welcome-link" to="/ai-assistant">Ask Farm Assistant ↗</NavLink></div></div>
-      <div className="m-welcome-art" aria-hidden="true">
-        <svg className="m-farm-scene" viewBox="0 0 360 250" role="presentation">
-          <circle className="m-scene-sun" cx="292" cy="48" r="24" />
-          <path className="m-scene-hill" d="M0 142 47 103l34 26 45-52 48 53 43-34 51 39 36-22 56 41v96H0z" />
-          <path className="m-scene-field" d="M0 156q85-34 174 0t186 0v94H0z" />
-          <g className="m-scene-rows" fill="none" strokeLinecap="round">
-            <path d="M-20 235q130-77 400-54M-20 252q140-87 400-62M47 258q93-47 264-42" />
-            <path d="M69 203q-6-12-1-22m1 22q6-10 14-13m34 1q-5-13 0-23m0 23q7-11 15-14m35 8q-5-13 0-23m0 23q7-11 15-14m30 11q-5-13 0-23m0 23q7-11 15-14m29 16q-5-13 0-23m0 23q7-11 15-14" />
-          </g>
-          <g className="m-farmer">
-            <path className="m-farmer-legs" d="m197 139-22 37 8 25 13-1 2-19 24-27 4 29 13 14 12-6-7-25 3-27-25-20z" />
-            <path className="m-farmer-shirt" d="m191 104 17-8 17 8 25 30-28 25-35-20-14 14-9-9 13-27z" />
-            <path className="m-farmer-arm" d="m191 111-17 19 24 16m30-30 20 17 13 9" />
-            <path className="m-farmer-hand" d="m195 143 7 5m49-8 7 5" />
-            <path className="m-farmer-face" d="M196 82q0-19 18-19t18 19q0 16-18 20-18-4-18-20" />
-            <path className="m-farmer-hat" d="M191 77q3-18 24-19 18 2 22 17l-15-4-18 5z" />
-            <path className="m-farmer-boot" d="m174 197 1 7-17 5q-5 5 1 8h26l2-7-5-13zm72 1 2 8 15 7q4 5-2 7h-25l-2-9 2-12z" />
-          </g>
-          <g className="m-farm-tool">
-            <path d="m200 145 87 65" />
-            <path d="m278 202 20 4-6 15-17-2" />
-          </g>
-          <path className="m-scene-spark" d="m109 82 3 8 8 3-8 3-3 8-3-8-8-3 8-3zm180 76 2 6 6 2-6 2-2 6-2-6-6-2 6-2z" />
-        </svg>
-        <b>Growing with care</b>
+      <video ref={welcomeVideoRef} className="m-welcome-video" muted loop playsInline preload="none" role="presentation">
+        <source src="https://videos.pexels.com/video-files/11785195/11785195-sd_960_540_30fps.mp4" type="video/mp4" />
+      </video>
+      <div className="m-welcome-content">
+        <span className="m-eyebrow">{t('Welcome to Farm Saathi', language)}</span>
+        <h1>Namaste, {profile.name} <span>👋</span></h1>
+        <p>Your farm companion for the season ahead.</p>
+        <div className="m-welcome-meta">
+          <span>⌖ {profile.village || profile.district}, {profile.state}</span>
+          <span>▣ {profile.landSize} {profile.landUnit}</span>
+          <span>♧ {profile.soil || 'Soil not recorded'} soil</span>
+        </div>
+        <div className="m-welcome-actions">
+          <Button onClick={() => navigate('/crop-growth')}>＋ Add crop record</Button>
+          <NavLink className="m-welcome-link" to="/ai-assistant">Ask Farm Assistant ↗</NavLink>
+        </div>
+        <a className="m-welcome-credit" href="https://www.pexels.com/video/men-working-on-field-11785195/" target="_blank" rel="noreferrer">Video: Thakor Kaushik / Pexels</a>
       </div>
     </div>
     <div className="m-stat-grid m-dashboard-stats">
