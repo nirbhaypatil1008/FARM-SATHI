@@ -5,7 +5,7 @@ import './AppMvp.css'
 
 const FarmContext = createContext(null)
 const navItems = [
-  ['/', 'Dashboard', '⌂'], ['/my-farm', 'My farm', '⌂'], ['/crop-analyzer', 'Crop planner', '◈'],
+  ['/', 'Dashboard', '⌂'], ['/login', 'Farmer Login', '🔐'], ['/my-farm', 'My farm', '⌂'], ['/crop-analyzer', 'Crop planner', '◈'],
   ['/crop-growth', 'Crop growth', '↗'], ['/crop-doctor', 'Crop Doctor', '✚'], ['/smart-water', 'Water & soil', '♧'],
   ['/weather', 'Weather', '☼'], ['/calendar', 'Farm calendar', '▦'], ['/market-price', 'Mandi prices', '₹'],
   ['/expenses', 'Expenses', '▤'], ['/budget', 'Budget', '◷'], ['/government-schemes', 'Schemes', '▧'],
@@ -230,12 +230,13 @@ function Layout() {
           <NavLink className="m-notification-button" to="/notifications" aria-label="Farm alerts">♢</NavLink>
           <NavLink className="m-quick-action" to="/crop-growth">＋ Add crop</NavLink>
           <button className="m-theme" type="button" onClick={() => setDarkMode(!darkMode)} aria-label={darkMode ? 'Switch to day mode' : 'Switch to night mode'} title={darkMode ? 'Switch to day mode' : 'Switch to night mode'}>{darkMode ? '☀' : '☾'}<span>{darkMode ? 'Day' : 'Night'}</span></button>
-          <details className="m-profile-menu"><summary className="m-profile-chip"><span className="m-avatar">{initials}</span><span className="m-profile-name">{displayName}</span><span aria-hidden="true">⌄</span></summary><div className="m-profile-dropdown"><b>{displayName}</b><small>{loc}</small><NavLink to="/profile">Profile & farm settings</NavLink></div></details>
+          <details className="m-profile-menu"><summary className="m-profile-chip"><span className="m-avatar">{initials}</span><span className="m-profile-name">{displayName}</span><span aria-hidden="true">⌄</span></summary><div className="m-profile-dropdown"><b>{displayName}</b><small>{loc}</small><NavLink to="/profile">Profile & farm settings</NavLink><NavLink to="/login">Farmer Login / Switch Account</NavLink></div></details>
         </div>
       </header>
       {storageError && <div className="m-storage-error" role="alert">{storageError}</div>}
       <div className="m-content"><Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/my-farm" element={<MyFarmPage />} />
         <Route path="/crop-analyzer" element={<CropPlanner />} />
@@ -509,18 +510,38 @@ function Onboarding() {
   return <ProfileForm isNew />
 }
 
-function FarmerAuthSection({ onAuthSuccess }) {
+function LoginPage({ onAuthSuccess }) {
+  const { profile, setProfile } = useFarm()
+  const navigate = useNavigate()
   const [mode, setMode] = useState('login')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [stateName, setStateName] = useState('Karnataka')
   const [district, setDistrict] = useState('')
+  const [preferredLanguage, setPreferredLanguage] = useState('en')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('farmer_name') || '')
+  const [currentPhone, setCurrentPhone] = useState(() => localStorage.getItem('farmer_phone') || '')
   const hasToken = api.auth.isAuthenticated()
+
+  const fillDemo = () => {
+    if (mode === 'login') {
+      setPhoneNumber('9876543210')
+      setPassword('Kisan@123')
+    } else {
+      setName('Ramesh Gowda')
+      setPhoneNumber('9876543210')
+      setPassword('Kisan@123')
+      setStateName('Karnataka')
+      setDistrict('Mandya')
+      setPreferredLanguage('kn')
+    }
+    setError('')
+  }
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -529,11 +550,22 @@ function FarmerAuthSection({ onAuthSuccess }) {
     setSuccess('')
     try {
       const res = await api.auth.login(phoneNumber, password)
-      setCurrentUser(res.farmer?.name || phoneNumber)
-      setSuccess(`Welcome back, ${res.farmer?.name || 'Farmer'}!`)
+      const farmerName = res.farmer?.name || phoneNumber
+      setCurrentUser(farmerName)
+      setCurrentPhone(res.farmer?.phone_number || phoneNumber)
+      setSuccess(`Welcome back, ${farmerName}! Authenticated successfully.`)
+      if (res.farmer) {
+        setProfile((prev) => ({
+          ...prev,
+          name: res.farmer.name || prev?.name,
+          phone: res.farmer.phone_number || prev?.phone,
+          state: res.farmer.state || prev?.state,
+          district: res.farmer.district || prev?.district,
+        }))
+      }
       if (onAuthSuccess) onAuthSuccess(res.farmer)
     } catch (err) {
-      setError(err.message || 'Login failed. Check your mobile number and password.')
+      setError(err.message || 'Login failed. Check your 10-digit mobile number and password.')
     } finally {
       setLoading(false)
     }
@@ -551,13 +583,24 @@ function FarmerAuthSection({ onAuthSuccess }) {
         password,
         state: stateName,
         district: district || undefined,
-        preferred_language: 'en'
+        preferred_language: preferredLanguage
       })
-      setCurrentUser(res.farmer?.name || name)
-      setSuccess(`Account registered successfully for ${res.farmer?.name || name}!`)
+      const farmerName = res.farmer?.name || name
+      setCurrentUser(farmerName)
+      setCurrentPhone(res.farmer?.phone_number || phoneNumber)
+      setSuccess(`Account registered successfully for ${farmerName}!`)
+      if (res.farmer) {
+        setProfile((prev) => ({
+          ...prev,
+          name: res.farmer.name || prev?.name,
+          phone: res.farmer.phone_number || prev?.phone,
+          state: res.farmer.state || prev?.state,
+          district: res.farmer.district || prev?.district,
+        }))
+      }
       if (onAuthSuccess) onAuthSuccess(res.farmer)
     } catch (err) {
-      setError(err.message || 'Registration failed. Make sure phone number is 10 digits.')
+      setError(err.message || 'Registration failed. Make sure phone number is a valid 10-digit number starting with 6-9.')
     } finally {
       setLoading(false)
     }
@@ -566,77 +609,361 @@ function FarmerAuthSection({ onAuthSuccess }) {
   const handleLogout = () => {
     api.auth.logout()
     setCurrentUser('')
+    setCurrentPhone('')
     setSuccess('You have logged out.')
   }
 
   if (hasToken && currentUser) {
+    const initials = currentUser.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'RG'
     return (
-      <Card style={{ borderLeft: '4px solid #51c78d', marginBottom: '1.5rem' }}>
-        <div className="m-section-title">
-          <div>
-            <span className="m-eyebrow" style={{ color: '#51c78d' }}>✓ Authenticated Farmer Account</span>
-            <h2>Connected as {currentUser}</h2>
+      <div className="m-login-wrapper">
+        <video className="m-login-video-bg" autoPlay loop muted playsInline poster="/media/login-bg-photo.jpg">
+          <source src="/media/login-bg-video.mp4" type="video/mp4" />
+        </video>
+        <div className="m-login-overlay" />
+        <div className="m-kisan-id-card">
+          <div className="m-kisan-badge-header">
+            <span>✓</span> <span>VERIFIED FARMER ACCOUNT</span>
           </div>
-          <Button variant="light" onClick={handleLogout}>Log out</Button>
+          <div className="m-kisan-avatar-row">
+            <div className="m-kisan-avatar">{initials}</div>
+            <h2 className="m-kisan-name">{currentUser}</h2>
+            <div className="m-login-status-pill">
+              <span className="m-login-dot" /> Connected to Farm Saathi Backend
+            </div>
+          </div>
+          <div className="m-kisan-meta-grid">
+            <div className="m-kisan-meta-item">
+              <small>Registered Mobile</small>
+              <b>📱 {currentPhone || phoneNumber || '9876543210'}</b>
+            </div>
+            <div className="m-kisan-meta-item">
+              <small>Location</small>
+              <b>📍 {district ? `${district}, ${stateName}` : (stateName || 'Mandya, Karnataka')}</b>
+            </div>
+            <div className="m-kisan-meta-item">
+              <small>Security Token</small>
+              <b>🔒 JWT Bearer Active</b>
+            </div>
+            <div className="m-kisan-meta-item">
+              <small>Backend Database</small>
+              <b>🌱 FastAPI + SQLite</b>
+            </div>
+          </div>
+          <div className="m-kisan-actions">
+            <Button onClick={() => navigate('/')} variant="primary">
+              ⌂ Go to Dashboard
+            </Button>
+            <Button onClick={() => navigate('/profile')} variant="light">
+              ○ Farm Profile Settings
+            </Button>
+            <Button onClick={handleLogout} variant="light" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', color: '#fca5a5' }}>
+              🚪 Log out
+            </Button>
+          </div>
         </div>
-        <p className="m-muted">Your session token is active and securely authenticated with the Farm Saathi backend database.</p>
-      </Card>
+      </div>
     )
   }
 
   return (
-    <Card style={{ marginBottom: '1.5rem' }}>
-      <div className="m-section-title">
-        <div>
-          <span className="m-eyebrow">Backend Account Security</span>
-          <h2>{mode === 'login' ? 'Farmer Login' : 'Register New Farmer Account'}</h2>
+    <div className="m-login-wrapper">
+      <video className="m-login-video-bg" autoPlay loop muted playsInline poster="/media/login-bg-photo.jpg">
+        <source src="/media/login-bg-video.mp4" type="video/mp4" />
+      </video>
+      <div className="m-login-overlay" />
+      <div className="m-login-content">
+        {/* Left Branding Showcase */}
+        <div className="m-login-branding">
+          <div className="m-login-badge">
+            <span className="m-login-dot" />
+            <span>KRISHI SAATHI · DIGITAL FARMER ASSISTANT</span>
+          </div>
+          <h1 className="m-login-hero-title">
+            Smart Farming, <br />
+            <span className="m-login-highlight">Empowered Farmers.</span>
+          </h1>
+          <p className="m-login-hero-sub">
+            Access AI crop doctor diagnostics, precision irrigation advisories, real-time APMC mandi prices, and government schemes in one integrated portal.
+          </p>
+          <div className="m-login-features">
+            <div className="m-login-feature-item">
+              <span className="m-login-feature-icon">🩺</span>
+              <div className="m-login-feature-text">
+                <b>AI Crop Doctor</b>
+                <small>Instant leaf disease analysis & scientific remedies</small>
+              </div>
+            </div>
+            <div className="m-login-feature-item">
+              <span className="m-login-feature-icon">💧</span>
+              <div className="m-login-feature-text">
+                <b>Smart Irrigation & Soil</b>
+                <small>Soil moisture recommendations tailored to crop stage</small>
+              </div>
+            </div>
+            <div className="m-login-feature-item">
+              <span className="m-login-feature-icon">₹</span>
+              <div className="m-login-feature-text">
+                <b>Live Mandi APMC Prices</b>
+                <small>Real-time commodity rates across Karnataka & India</small>
+              </div>
+            </div>
+          </div>
+          <div className="m-login-status-pill">
+            <span className="m-login-dot" />
+            <span>FastAPI Backend Online · JWT Security Active</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button type="button" className={`m-button ${mode === 'login' ? 'primary' : 'light'}`} style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => { setMode('login'); setError(''); setSuccess('') }}>
-            Log in
-          </button>
-          <button type="button" className={`m-button ${mode === 'register' ? 'primary' : 'light'}`} style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => { setMode('register'); setError(''); setSuccess('') }}>
-            Register
-          </button>
+
+        {/* Right Authentication Card */}
+        <div className="m-login-card">
+          <div className="m-login-card-header">
+            <span className="m-login-card-eyebrow">
+              {mode === 'login' ? 'SECURE ACCESS' : 'JOIN FARM SAATHI'}
+            </span>
+            <h2 className="m-login-card-title">
+              {mode === 'login' ? 'Farmer Sign In' : 'Register New Farmer'}
+            </h2>
+            <p className="m-login-card-sub">
+              {mode === 'login'
+                ? 'Sign in with your 10-digit mobile number and password'
+                : 'Create your account to sync farm records and AI advisories'}
+            </p>
+          </div>
+
+          {/* Mode Switcher Tabs */}
+          <div className="m-login-tabs">
+            <button
+              type="button"
+              className={`m-login-tab-btn ${mode === 'login' ? 'active' : ''}`}
+              onClick={() => { setMode('login'); setError(''); setSuccess('') }}
+            >
+              <span>📱</span> Farmer Sign In
+            </button>
+            <button
+              type="button"
+              className={`m-login-tab-btn ${mode === 'register' ? 'active' : ''}`}
+              onClick={() => { setMode('register'); setError(''); setSuccess('') }}
+            >
+              <span>👤</span> New Registration
+            </button>
+          </div>
+
+          {/* Quick Demo Fill Helper */}
+          <div style={{ marginBottom: '1.1rem' }}>
+            <button
+              type="button"
+              className="m-login-demo-btn"
+              onClick={fillDemo}
+              title="Click to fill test credentials instantly"
+            >
+              <span>⚡</span> Quick Fill Demo Farmer ({mode === 'login' ? '9876543210' : 'Ramesh Gowda'})
+            </button>
+          </div>
+
+          {error && (
+            <div className="m-login-alert-error" role="alert">
+              <span>⚠️</span> <span>{error}</span>
+            </div>
+          )}
+          {success && (
+            <div className="m-login-alert-success" role="status">
+              <span>✓</span> <span>{success}</span>
+            </div>
+          )}
+
+          {mode === 'login' ? (
+            <form onSubmit={handleLogin} className="m-login-form">
+              <div className="m-login-field">
+                <label className="m-login-label">
+                  <span>10-digit Mobile Number *</span>
+                </label>
+                <div className="m-login-input-wrapper">
+                  <span className="m-login-input-icon">📱</span>
+                  <input
+                    required
+                    type="tel"
+                    maxLength="14"
+                    className="m-login-input"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="e.g. 9876543210"
+                    autoComplete="tel"
+                  />
+                </div>
+              </div>
+
+              <div className="m-login-field">
+                <label className="m-login-label">
+                  <span>Password *</span>
+                </label>
+                <div className="m-login-input-wrapper">
+                  <span className="m-login-input-icon">🔒</span>
+                  <input
+                    required
+                    type={showPassword ? 'text' : 'password'}
+                    className="m-login-input"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password"
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    className="m-login-pwd-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="m-login-btn-submit"
+                disabled={loading}
+              >
+                {loading ? 'Authenticating…' : 'Sign In to Farm Saathi →'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleRegister} className="m-login-form">
+              <div className="m-login-field">
+                <label className="m-login-label">
+                  <span>Full Name *</span>
+                </label>
+                <div className="m-login-input-wrapper">
+                  <span className="m-login-input-icon">👤</span>
+                  <input
+                    required
+                    className="m-login-input"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Ramesh Kumar"
+                    autoComplete="name"
+                  />
+                </div>
+              </div>
+
+              <div className="m-login-field">
+                <label className="m-login-label">
+                  <span>10-digit Mobile Number *</span>
+                </label>
+                <div className="m-login-input-wrapper">
+                  <span className="m-login-input-icon">📱</span>
+                  <input
+                    required
+                    type="tel"
+                    maxLength="14"
+                    className="m-login-input"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="e.g. 9876543210"
+                    autoComplete="tel"
+                  />
+                </div>
+              </div>
+
+              <div className="m-login-field">
+                <label className="m-login-label">
+                  <span>Password (at least 6 characters) *</span>
+                </label>
+                <div className="m-login-input-wrapper">
+                  <span className="m-login-input-icon">🔒</span>
+                  <input
+                    required
+                    type={showPassword ? 'text' : 'password'}
+                    minLength="6"
+                    className="m-login-input"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Create secure password"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="m-login-pwd-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="m-login-row-2col">
+                <div className="m-login-field">
+                  <label className="m-login-label">
+                    <span>State *</span>
+                  </label>
+                  <div className="m-login-input-wrapper">
+                    <span className="m-login-input-icon">🗺️</span>
+                    <input
+                      required
+                      className="m-login-input"
+                      value={stateName}
+                      onChange={(e) => setStateName(e.target.value)}
+                      placeholder="e.g. Karnataka"
+                    />
+                  </div>
+                </div>
+
+                <div className="m-login-field">
+                  <label className="m-login-label">
+                    <span>District</span>
+                  </label>
+                  <div className="m-login-input-wrapper">
+                    <span className="m-login-input-icon">📍</span>
+                    <input
+                      className="m-login-input"
+                      value={district}
+                      onChange={(e) => setDistrict(e.target.value)}
+                      placeholder="e.g. Mandya"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="m-login-field">
+                <label className="m-login-label">
+                  <span>Preferred Language</span>
+                </label>
+                <div className="m-login-input-wrapper">
+                  <span className="m-login-input-icon">🌐</span>
+                  <select
+                    className="m-login-input"
+                    value={preferredLanguage}
+                    onChange={(e) => setPreferredLanguage(e.target.value)}
+                    style={{ appearance: 'auto', background: 'rgba(6, 20, 14, 0.85)' }}
+                  >
+                    <option value="en">English</option>
+                    <option value="kn">ಕನ್ನಡ (Kannada)</option>
+                    <option value="hi">हिन्दी (Hindi)</option>
+                    <option value="mr">मराठी (Marathi)</option>
+                    <option value="te">తెలుగు (Telugu)</option>
+                    <option value="ta">தமிழ் (Tamil)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="m-login-btn-submit"
+                disabled={loading}
+              >
+                {loading ? 'Creating Account…' : 'Register Farmer Account →'}
+              </button>
+            </form>
+          )}
         </div>
       </div>
-
-      {mode === 'login' ? (
-        <form onSubmit={handleLogin} className="m-form">
-          <label>10-digit Mobile Number *
-            <input required type="tel" maxLength="14" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="e.g. 9876543210" />
-          </label>
-          <label>Password *
-            <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password" />
-          </label>
-          {error && <p className="m-error" role="alert">{error}</p>}
-          {success && <p style={{ color: '#51c78d' }}>{success}</p>}
-          <Button type="submit" disabled={loading}>{loading ? 'Authenticating…' : 'Log in to Farm Saathi'}</Button>
-        </form>
-      ) : (
-        <form onSubmit={handleRegister} className="m-form">
-          <label>Full Name *
-            <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ramesh Kumar" />
-          </label>
-          <label>10-digit Mobile Number *
-            <input required type="tel" maxLength="14" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="e.g. 9876543210" />
-          </label>
-          <label>Password (at least 6 characters) *
-            <input required type="password" minLength="6" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Create secure password" />
-          </label>
-          <label>State *
-            <input required value={stateName} onChange={(e) => setStateName(e.target.value)} placeholder="e.g. Karnataka" />
-          </label>
-          <label>District
-            <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="e.g. Mandya" />
-          </label>
-          {error && <p className="m-error" role="alert">{error}</p>}
-          {success && <p style={{ color: '#51c78d' }}>{success}</p>}
-          <Button type="submit" disabled={loading}>{loading ? 'Creating Account…' : 'Register Farmer Account'}</Button>
-        </form>
-      )}
-    </Card>
+    </div>
   )
+}
+
+function FarmerAuthSection({ onAuthSuccess }) {
+  return <LoginPage onAuthSuccess={onAuthSuccess} />
 }
 
 function ProfilePage() {

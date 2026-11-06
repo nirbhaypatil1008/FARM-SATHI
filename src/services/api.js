@@ -71,7 +71,10 @@ export const api = {
       });
       if (result?.access_token) {
         localStorage.setItem('farmer_token', result.access_token);
-        localStorage.setItem('farmer_name', userData.name || '');
+        localStorage.setItem('farmer_name', result.farmer?.name || userData.name || '');
+        if (result.farmer?.phone_number) {
+          localStorage.setItem('farmer_phone', result.farmer.phone_number);
+        }
       }
       return result;
     },
@@ -83,7 +86,10 @@ export const api = {
       });
       if (result?.access_token) {
         localStorage.setItem('farmer_token', result.access_token);
-        localStorage.setItem('farmer_name', result.farmer_name || '');
+        localStorage.setItem('farmer_name', result.farmer?.name || result.farmer_name || '');
+        if (result.farmer?.phone_number) {
+          localStorage.setItem('farmer_phone', result.farmer.phone_number);
+        }
       }
       return result;
     },
@@ -93,6 +99,7 @@ export const api = {
     logout: () => {
       localStorage.removeItem('farmer_token');
       localStorage.removeItem('farmer_name');
+      localStorage.removeItem('farmer_phone');
     },
 
     isAuthenticated: () => Boolean(localStorage.getItem('farmer_token')),
