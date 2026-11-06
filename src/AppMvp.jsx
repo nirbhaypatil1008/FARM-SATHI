@@ -2,15 +2,59 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import api from './services/api.js'
 import './AppMvp.css'
+import {
+  IconBrandLogo,
+  IconDashboard,
+  IconFarmerLogin,
+  IconMyFarm,
+  IconCropPlanner,
+  IconCropGrowth,
+  IconCropDoctor,
+  IconWaterSoil,
+  IconWeather,
+  IconFarmCalendar,
+  IconMandiPrices,
+  IconExpenses,
+  IconBudget,
+  IconSchemes,
+  IconLoans,
+  IconInsurance,
+  IconAiAssistant,
+  IconVoiceAssistant,
+  IconAlerts,
+  IconProfile,
+  IconSearch,
+  IconLocation,
+  IconSun,
+  IconMoon,
+  IconSoil,
+  IconSprout,
+  IconLand,
+  IconChecklist,
+  IconHealthScore,
+} from './components/Icons.jsx'
 
 const FarmContext = createContext(null)
 const navItems = [
-  ['/', 'Dashboard', '⌂'], ['/login', 'Farmer Login', '🔐'], ['/my-farm', 'My farm', '⌂'], ['/crop-analyzer', 'Crop planner', '◈'],
-  ['/crop-growth', 'Crop growth', '↗'], ['/crop-doctor', 'Crop Doctor', '✚'], ['/smart-water', 'Water & soil', '♧'],
-  ['/weather', 'Weather', '☼'], ['/calendar', 'Farm calendar', '▦'], ['/market-price', 'Mandi prices', '₹'],
-  ['/expenses', 'Expenses', '▤'], ['/budget', 'Budget', '◷'], ['/government-schemes', 'Schemes', '▧'],
-  ['/loans', 'Loan guide', '₹'], ['/insurance', 'Insurance', '◇'], ['/ai-assistant', 'Farm assistant', '☏'], ['/voice-assistant', 'Voice assistant', '♫'],
-  ['/notifications', 'Alerts', '♢'], ['/profile', 'My profile', '○'],
+  ['/', 'Dashboard', <IconDashboard key="dash" />],
+  ['/login', 'Farmer Login', <IconFarmerLogin key="login" />],
+  ['/my-farm', 'My farm', <IconMyFarm key="farm" />],
+  ['/crop-analyzer', 'Crop planner', <IconCropPlanner key="plan" />],
+  ['/crop-growth', 'Crop growth', <IconCropGrowth key="growth" />],
+  ['/crop-doctor', 'Crop Doctor', <IconCropDoctor key="doc" />],
+  ['/smart-water', 'Water & soil', <IconWaterSoil key="water" />],
+  ['/weather', 'Weather', <IconWeather key="weather" />],
+  ['/calendar', 'Farm calendar', <IconFarmCalendar key="cal" />],
+  ['/market-price', 'Mandi prices', <IconMandiPrices key="mandi" />],
+  ['/expenses', 'Expenses', <IconExpenses key="exp" />],
+  ['/budget', 'Budget', <IconBudget key="bud" />],
+  ['/government-schemes', 'Schemes', <IconSchemes key="scheme" />],
+  ['/loans', 'Loan guide', <IconLoans key="loan" />],
+  ['/insurance', 'Insurance', <IconInsurance key="ins" />],
+  ['/ai-assistant', 'Farm assistant', <IconAiAssistant key="ai" />],
+  ['/voice-assistant', 'Voice assistant', <IconVoiceAssistant key="voice" />],
+  ['/notifications', 'Alerts', <IconAlerts key="alerts" />],
+  ['/profile', 'My profile', <IconProfile key="prof" />],
 ]
 
 const stages = ['Land preparation', 'Seed selection', 'Sowing', 'Germination', 'Seedling', 'Vegetative growth', 'Flowering', 'Fruiting', 'Maturity', 'Harvesting']
@@ -215,21 +259,21 @@ function Layout() {
   return <div className={`m-app ${darkMode ? 'dark' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
     {mobileMenuOpen && <button className="m-sidebar-scrim" type="button" aria-label="Close navigation" onClick={closeMenu} />}
     <aside className="m-sidebar">
-      <div className="m-sidebar-brand-row"><NavLink className="m-brand" to="/" onClick={closeMenu}><span className="m-brand-leaf">✿</span><span className="m-brand-copy"><b>FARM SAATHI</b><small>Farming made friendly</small></span></NavLink><button className="m-sidebar-collapse" type="button" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>{sidebarCollapsed ? '»' : '«'}</button></div>
+      <div className="m-sidebar-brand-row"><NavLink className="m-brand" to="/" onClick={closeMenu}><span className="m-brand-leaf"><IconBrandLogo size={24} /></span><span className="m-brand-copy"><b>FARM SAATHI</b><small>Farming made friendly</small></span></NavLink><button className="m-sidebar-collapse" type="button" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>{sidebarCollapsed ? '»' : '«'}</button></div>
       <nav className="m-nav">{navItems.map(([path, label, icon]) => <NavLink key={path} to={path} end={path === '/'} title={label} onClick={closeMenu} className="m-nav-link"><span className="m-nav-icon">{icon}</span><span className="m-nav-label">{t(label, language)}</span></NavLink>)}</nav>
       <div className="m-sidebar-note">Your farm information stays in this browser.</div>
     </aside>
     <main className="m-main">
       <header className="m-topbar">
         <button className="m-menu-toggle" type="button" aria-label="Open navigation menu" onClick={() => setMobileMenuOpen(true)}>☰</button>
-        <div className="m-mobile-brand"><span className="m-brand-leaf">✿</span><b>FARM SAATHI</b></div>
-        <form className="m-global-search" role="search" onSubmit={openSearchResult}><span aria-hidden="true">⌕</span><input aria-label="Search Farm Saathi pages" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search farm tools…" /><button type="submit">Search</button></form>
-        <span className="m-location">⌖ {loc}</span>
+        <div className="m-mobile-brand"><span className="m-brand-leaf"><IconBrandLogo size={20} /></span><b>FARM SAATHI</b></div>
+        <form className="m-global-search" role="search" onSubmit={openSearchResult}><span aria-hidden="true" style={{ display: 'flex', alignItems: 'center' }}><IconSearch size={16} /></span><input aria-label="Search Farm Saathi pages" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search farm tools…" /><button type="submit">Search</button></form>
+        <span className="m-location"><IconLocation size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} /> {loc}</span>
         <div className="m-top-actions">
           <label className="m-language"><span className="sr-only">Language</span><select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="en">English</option><option value="kn">ಕನ್ನಡ</option></select></label>
-          <NavLink className="m-notification-button" to="/notifications" aria-label="Farm alerts">♢</NavLink>
+          <NavLink className="m-notification-button" to="/notifications" aria-label="Farm alerts"><IconAlerts size={18} /></NavLink>
           <NavLink className="m-quick-action" to="/crop-growth">＋ Add crop</NavLink>
-          <button className="m-theme" type="button" onClick={() => setDarkMode(!darkMode)} aria-label={darkMode ? 'Switch to day mode' : 'Switch to night mode'} title={darkMode ? 'Switch to day mode' : 'Switch to night mode'}>{darkMode ? '☀' : '☾'}<span>{darkMode ? 'Day' : 'Night'}</span></button>
+          <button className="m-theme" type="button" onClick={() => setDarkMode(!darkMode)} aria-label={darkMode ? 'Switch to day mode' : 'Switch to night mode'} title={darkMode ? 'Switch to day mode' : 'Switch to night mode'}>{darkMode ? <IconSun size={17} /> : <IconMoon size={17} />}<span>{darkMode ? 'Day' : 'Night'}</span></button>
           <details className="m-profile-menu"><summary className="m-profile-chip"><span className="m-avatar">{initials}</span><span className="m-profile-name">{displayName}</span><span aria-hidden="true">⌄</span></summary><div className="m-profile-dropdown"><b>{displayName}</b><small>{loc}</small><NavLink to="/profile">Profile & farm settings</NavLink><NavLink to="/login">Farmer Login / Switch Account</NavLink></div></details>
         </div>
       </header>
@@ -256,7 +300,13 @@ function Layout() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes></div>
-      <nav className="m-bottom-nav">{[['/', 'Home', '⌂'], ['/crop-growth', 'Crops', '↗'], ['/crop-doctor', 'Doctor', '✚'], ['/weather', 'Weather', '☼'], ['/profile', 'Profile', '○']].map(([path, label, icon]) => <NavLink to={path} end={path === '/'} key={path}><span>{icon}</span><small>{label}</small></NavLink>)}</nav>
+      <nav className="m-bottom-nav">{[
+        ['/', 'Home', <IconDashboard size={18} key="b-home" />],
+        ['/crop-growth', 'Crops', <IconCropGrowth size={18} key="b-crop" />],
+        ['/crop-doctor', 'Doctor', <IconCropDoctor size={18} key="b-doc" />],
+        ['/weather', 'Weather', <IconWeather size={18} key="b-weather" />],
+        ['/profile', 'Profile', <IconProfile size={18} key="b-prof" />]
+      ].map(([path, label, icon]) => <NavLink to={path} end={path === '/'} key={path}><span>{icon}</span><small>{label}</small></NavLink>)}</nav>
     </main>
     <FloatingAssistant />
   </div>
@@ -355,9 +405,9 @@ function Dashboard() {
         <h1>Namaste, {profile.name} <span>👋</span></h1>
         <p>Your farm companion for the season ahead.</p>
         <div className="m-welcome-meta">
-          <span>⌖ {profile.village || profile.district}, {profile.state}</span>
-          <span>▣ {profile.landSize} {profile.landUnit}</span>
-          <span>♧ {profile.soil || 'Soil not recorded'} soil</span>
+          <span><IconLocation size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />{profile.village || profile.district}, {profile.state}</span>
+          <span><IconLand size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />{profile.landSize} {profile.landUnit}</span>
+          <span><IconSoil size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />{profile.soil || 'Soil not recorded'} soil</span>
         </div>
         <div className="m-welcome-actions">
           <Button onClick={() => navigate('/crop-growth')}>＋ Add crop record</Button>
@@ -367,10 +417,10 @@ function Dashboard() {
       </div>
     </div>
     <div className="m-stat-grid m-dashboard-stats">
-      <Card className="m-stat"><span className="m-stat-icon">⌂</span><span>Registered land</span><b>{profile.landSize} <small>{profile.landUnit}</small></b><small className="m-stat-foot">Farm profile record</small></Card>
-      <Card className="m-stat"><span className="m-stat-icon">♧</span><span>Crops growing</span><b>{crops.length}</b><small className="m-stat-foot">{cropArea ? `${cropArea.toLocaleString()} acres recorded` : 'No crop area recorded'}</small></Card>
-      <Card className="m-stat"><span className="m-stat-icon">▦</span><span>Open farm tasks</span><b>{openTasks.length}</b><small className="m-stat-foot">{openTasks.length ? `${openTasks.filter((task) => task.date <= dateToday()).length} due today or earlier` : 'No open reminders'}</small></Card>
-      <Card className="m-stat"><span className="m-stat-icon">✚</span><span>AI health score</span><b className="m-stat-unavailable">Not assessed</b><small className="m-stat-foot">No verified crop-health score</small></Card>
+      <Card className="m-stat"><span className="m-stat-icon"><IconLand size={22} /></span><span>Registered land</span><b>{profile.landSize} <small>{profile.landUnit}</small></b><small className="m-stat-foot">Farm profile record</small></Card>
+      <Card className="m-stat"><span className="m-stat-icon"><IconSprout size={22} /></span><span>Crops growing</span><b>{crops.length}</b><small className="m-stat-foot">{cropArea ? `${cropArea.toLocaleString()} acres recorded` : 'No crop area recorded'}</small></Card>
+      <Card className="m-stat"><span className="m-stat-icon"><IconChecklist size={22} /></span><span>Open farm tasks</span><b>{openTasks.length}</b><small className="m-stat-foot">{openTasks.length ? `${openTasks.filter((task) => task.date <= dateToday()).length} due today or earlier` : 'No open reminders'}</small></Card>
+      <Card className="m-stat"><span className="m-stat-icon"><IconHealthScore size={22} /></span><span>AI health score</span><b className="m-stat-unavailable">Not assessed</b><small className="m-stat-foot">No verified crop-health score</small></Card>
     </div>
     <div className="m-dashboard-columns m-dashboard-primary">
       <Card className="m-dashboard-health m-card-with-bg">
@@ -395,7 +445,7 @@ function Dashboard() {
         </div>
         <div className="m-card-content">
           <div className="m-section-title"><div><span className="m-eyebrow">Farm profile</span><h2>Soil health summary</h2></div><NavLink to="/smart-water">Soil Vision →</NavLink></div>
-          <div className="m-soil-summary"><span className="m-soil-icon">♧</span><div><b>{profile.soil || 'Soil type not recorded'}</b><small>Farmer-entered profile · not a laboratory measurement</small></div></div>
+          <div className="m-soil-summary"><span className="m-soil-icon"><IconSoil size={22} /></span><div><b>{profile.soil || 'Soil type not recorded'}</b><small>Farmer-entered profile · not a laboratory measurement</small></div></div>
           <div className="m-soil-summary-grid"><div><small>Water availability</small><b>{profile.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{profile.irrigation || 'Not recorded'}</b></div></div>
           <NavLink className="m-button light" to="/smart-water">Open soil tools</NavLink>
         </div>
@@ -419,7 +469,7 @@ function Dashboard() {
         </div>
         <div className="m-card-content">
           <div className="m-section-title"><div><span className="m-eyebrow">Field observations</span><h2>Soil moisture trend</h2></div><NavLink to="/smart-water">Water & soil →</NavLink></div>
-          <div className="m-chart-unavailable"><span>⌁</span><div><b>No sensor readings recorded</b><p>Connect or record actual soil-moisture readings to show a trend. This dashboard does not estimate moisture from photos.</p></div></div>
+          <div className="m-chart-unavailable"><span className="m-stat-icon" style={{ gridRow: 'auto', marginRight: 10 }}><IconWaterSoil size={22} /></span><div><b>No sensor readings recorded</b><p>Connect or record actual soil-moisture readings to show a trend. This dashboard does not estimate moisture from photos.</p></div></div>
         </div>
       </Card>
       <Card><div className="m-section-title"><div><span className="m-eyebrow">Your next steps</span><h2>Upcoming farming tasks</h2></div><NavLink to="/calendar">View calendar →</NavLink></div>
@@ -446,7 +496,7 @@ function Dashboard() {
       <WeatherPeek location={profile.village || profile.district || 'Mandya'} onOpen={() => navigate('/weather')} />
     </div>
     <div className="m-dashboard-columns">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Market information</span><h2>Mandi price highlights</h2></div><NavLink to="/market-price">Open source →</NavLink></div><div className="m-not-connected"><span>₹</span><p><b>Live prices not connected</b><small>We do not show sample rates as today's prices. Check Agmarknet for verified market reports.</small></p><a href="https://agmarknet.gov.in/" target="_blank" rel="noreferrer">Agmarknet ↗</a></div></Card>
+      <Card><div className="m-section-title"><div><span className="m-eyebrow">Market information</span><h2>Mandi price highlights</h2></div><NavLink to="/market-price">Open source →</NavLink></div><div className="m-not-connected"><span className="m-stat-icon" style={{ gridRow: 'auto', marginRight: 10 }}><IconMandiPrices size={24} /></span><p><b>Live prices not connected</b><small>We do not show sample rates as today's prices. Check Agmarknet for verified market reports.</small></p><a href="https://agmarknet.gov.in/" target="_blank" rel="noreferrer">Agmarknet ↗</a></div></Card>
       <Card><div className="m-section-title"><div><span className="m-eyebrow">Planning guidance</span><h2>Today on your farm</h2></div><NavLink to="/crop-analyzer">Plan a crop →</NavLink></div><p>Crop suggestions are planning estimates, not guarantees. Compare options using your soil, water availability, land size and budget.</p><NavLink className="m-button light" to="/crop-analyzer">View crop recommendations</NavLink><div className="m-dashboard-alert"><b>Health status is not assessed</b><small>Sample crop cards do not represent verified crop-health diagnostics. Add your own observations in Crop Growth.</small><NavLink to="/crop-doctor">Record a concern →</NavLink></div></Card>
     </div>
   </div>
@@ -652,13 +702,13 @@ function LoginPage({ onAuthSuccess }) {
           </div>
           <div className="m-kisan-actions">
             <Button onClick={() => navigate('/')} variant="primary">
-              ⌂ Go to Dashboard
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><IconDashboard size={16} /> Go to Dashboard</span>
             </Button>
             <Button onClick={() => navigate('/profile')} variant="light">
-              ○ Farm Profile Settings
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><IconProfile size={16} /> Farm Profile Settings</span>
             </Button>
             <Button onClick={handleLogout} variant="light" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', color: '#fca5a5' }}>
-              🚪 Log out
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>🚪 Log out</span>
             </Button>
           </div>
         </div>
@@ -1057,7 +1107,7 @@ function CropPlanner() {
       <label>Season<select value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })}><option>Kharif</option><option>Rabi</option><option>Summer</option></select></label>
       <label>Budget (₹)<input type="number" min="0" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} /></label>
     </div></Card>
-    <div className="m-recommend-grid">{recommendations.map((crop) => <Card key={crop.name}><div className="m-crop-card-head"><span className="m-crop-icon">♧</span><span className="m-score">{crop.score}/100 heuristic</span></div><h2>{crop.name}</h2><p>{crop.reason}</p><div className="m-estimate-label">PLANNING ESTIMATES · VERIFY LOCALLY</div><dl className="m-details"><div><dt>Duration</dt><dd>{crop.duration}</dd></div><div><dt>Water</dt><dd>{crop.need}</dd></div><div><dt>Cost for {profile?.landSize || 0} {profile?.landUnit || 'acres'}</dt><dd>{money(crop.totalCost)}</dd></div><div><dt>Indicative yield / acre</dt><dd>{crop.yield}</dd></div></dl><label className="m-compare"><input type="checkbox" checked={compared.includes(crop.name)} onChange={() => toggle(crop.name)} /> Add to compare (up to 3)</label></Card>)}</div>
+    <div className="m-recommend-grid">{recommendations.map((crop) => <Card key={crop.name}><div className="m-crop-card-head"><span className="m-crop-icon"><IconSprout size={18} /></span><span className="m-score">{crop.score}/100 heuristic</span></div><h2>{crop.name}</h2><p>{crop.reason}</p><div className="m-estimate-label">PLANNING ESTIMATES · VERIFY LOCALLY</div><dl className="m-details"><div><dt>Duration</dt><dd>{crop.duration}</dd></div><div><dt>Water</dt><dd>{crop.need}</dd></div><div><dt>Cost for {profile?.landSize || 0} {profile?.landUnit || 'acres'}</dt><dd>{money(crop.totalCost)}</dd></div><div><dt>Indicative yield / acre</dt><dd>{crop.yield}</dd></div></dl><label className="m-compare"><input type="checkbox" checked={compared.includes(crop.name)} onChange={() => toggle(crop.name)} /> Add to compare (up to 3)</label></Card>)}</div>
     {compared.length > 1 && <Card><h2>Compare options</h2><div className="m-compare-table">{recommendations.filter((crop) => compared.includes(crop.name)).map((crop) => <div key={crop.name}><b>{crop.name}</b><span>Cost: {money(crop.totalCost)}</span><span>Water: {crop.need}</span><span>Duration: {crop.duration}</span><span>Yield estimate: {crop.yield}</span></div>)}</div></Card>}
   </div>
 }
@@ -1091,7 +1141,7 @@ function CropGrowthPage() {
 
 function CropSummary({ crop }) {
   const stage = crop.stageIndex >= 0 ? stages[crop.stageIndex] : 'Stage not recorded'
-  return <div className="m-crop-summary"><span className="m-crop-icon">♧</span><span><b>{crop.name}</b><small>{crop.field || 'Field'} · {stage} · {daysSince(crop.sowingDate)} days</small></span><i>{crop.area} ac</i></div>
+  return <div className="m-crop-summary"><span className="m-crop-icon"><IconSprout size={18} /></span><span><b>{crop.name}</b><small>{crop.field || 'Field'} · {stage} · {daysSince(crop.sowingDate)} days</small></span><i>{crop.area} ac</i></div>
 }
 
 function WeatherPage() {
@@ -1545,7 +1595,7 @@ function DiseasePage() {
         <form className="m-doctor-form" onSubmit={submitImage}>
           <label className="m-field-label">Crop in the photo (optional)<input list="supported-crops" value={cropName} onChange={(event) => setCropName(event.target.value)} maxLength={80} placeholder="Choose a supported crop or leave blank for model classification" /><datalist id="supported-crops">{supportedCropInfo.crops.map((crop) => <option key={crop.crop} value={crop.crop} />)}{crops.map((crop) => <option key={`registered-${crop.id}`} value={crop.name} />)}</datalist></label>
           <div className="m-doctor-upload">
-            {previewUrl ? <img src={previewUrl} alt="Selected plant for AI visual screening" /> : <div className="m-doctor-placeholder"><span>♧</span><b>Choose a clear photo of the affected plant</b><small>Include the whole plant and a close-up of affected leaves when possible.</small></div>}
+            {previewUrl ? <img src={previewUrl} alt="Selected plant for AI visual screening" /> : <div className="m-doctor-placeholder"><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><IconCropDoctor size={36} /></span><b>Choose a clear photo of the affected plant</b><small>Include the whole plant and a close-up of affected leaves when possible.</small></div>}
             <div className="m-doctor-upload-actions">
               <label className="m-button primary">Take a photo<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { chooseImage(event.target.files?.[0]); event.target.value = '' }} /></label>
               <label className="m-button light">Upload image<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { chooseImage(event.target.files?.[0]); event.target.value = '' }} /></label>
@@ -1887,7 +1937,7 @@ function SoilWaterPage() {
       {!soilStatus.model_loaded && <p className="m-error" role="status">{soilStatus.message || 'Install the trained soil model in ai-service/models/soil/.'}</p>}
       <form className="m-doctor-form" onSubmit={submitSoilImage}>
         <div className="m-doctor-upload">
-          {previewUrl ? <img src={previewUrl} alt="Preview of the soil image selected for analysis" /> : <div className="m-doctor-placeholder"><span>♧</span><b>Photograph bare soil in natural, even light</b><small>Use JPG, PNG, or WEBP under 5 MB. Remove plants, pots, and other objects from the frame.</small></div>}
+          {previewUrl ? <img src={previewUrl} alt="Preview of the soil image selected for analysis" /> : <div className="m-doctor-placeholder"><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><IconSoil size={36} /></span><b>Photograph bare soil in natural, even light</b><small>Use JPG, PNG, or WEBP under 5 MB. Remove plants, pots, and other objects from the frame.</small></div>}
           <div className="m-doctor-upload-actions">
             <label className="m-button primary">Take a photo<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { chooseSoilImage(event.target.files?.[0]); event.target.value = '' }} /></label>
             <label className="m-button light">Upload image<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { chooseSoilImage(event.target.files?.[0]); event.target.value = '' }} /></label>
@@ -2753,7 +2803,7 @@ function Stat({ label, value }) {
 }
 
 function EmptyState({ title, detail, action }) {
-  return <div className="m-empty"><span className="m-empty-icon">♧</span><b>{title}</b><p>{detail}</p>{action}</div>
+  return <div className="m-empty"><span className="m-empty-icon" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><IconSprout size={32} /></span><b>{title}</b><p>{detail}</p>{action}</div>
 }
 
 export default App
