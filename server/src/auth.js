@@ -30,25 +30,25 @@ export function issueToken(user) {
   return jwt.sign({ sub: user.id, email: user.email, name: user.name }, config.JWT_SECRET, { expiresIn: config.JWT_EXPIRES_IN })
 }
 
-export function ensureGuestFarmerUser(id = 'guest-farmer', name = 'Guest Farmer') {
-  let user = database.prepare('SELECT id, name, email FROM users WHERE id = ?').get(id)
+export async function ensureGuestFarmerUser(id = 'guest-farmer', name = 'Guest Farmer') {
+  let user = await database.prepare('SELECT id, name, email FROM users WHERE id = ?').get(id)
   if (!user) {
-    database.prepare(`
+    await database.prepare(`
       INSERT OR IGNORE INTO users (id, name, email, password_hash)
       VALUES (?, ?, ?, 'guest-account-placeholder')
     `).run(id, name, `${id}@farmsathi.local`)
-    user = database.prepare('SELECT id, name, email FROM users WHERE id = ?').get(id)
+    user = await database.prepare('SELECT id, name, email FROM users WHERE id = ?').get(id)
   }
   return user
 }
 
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   const value = req.get('authorization') || ''
   const [scheme, token] = value.split(' ')
   if (scheme !== 'Bearer' || !token) return res.status(401).json({ error: 'Sign in to use the farming assistant.' })
 
   if (token.startsWith('guest-token') || token.startsWith('offline-token') || token.startsWith('farmer-')) {
-    req.user = ensureGuestFarmerUser()
+    req.user = await ensureGuestFarmerUser()
     return next()
   }
 
@@ -57,10 +57,10 @@ export function authenticate(req, res, next) {
     if (typeof claims === 'string' || typeof claims.sub !== 'string') {
       return res.status(401).json({ error: 'Your session is invalid. Sign in again.' })
     }
-    let user = database.prepare('SELECT id, name, email FROM users WHERE id = ?').get(claims.sub)
+    let user = await database.prepare('SELECT id, name, email FROM users WHERE id = ?').get(claims.sub)
     if (!user) {
       if (claims.sub === 'guest-farmer') {
-        user = ensureGuestFarmerUser()
+        user = await ensureGuestFarmerUser()
       } else {
         return res.status(401).json({ error: 'Your account is no longer available. Sign in again.' })
       }
@@ -72,7 +72,7 @@ export function authenticate(req, res, next) {
   }
 }
 
-export function authenticateOptional(req, res, next) {
+export async function authenticateOptional(req, res, next) {
   const value = req.get('authorization') || ''
   if (!value) return next()
   return authenticate(req, res, next)
@@ -84,11 +84,13 @@ export async function register(req, res, next) {
   try {
     const id = randomBytes(16).toString('hex')
     const passwordHash = await hashPassword(parsed.data.password)
-    database.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(id, parsed.data.name, parsed.data.email, passwordHash)
+    await database.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(id, parsed.data.name, parsed.data.email, passwordHash)
     const user = { id, name: parsed.data.name, email: parsed.data.email }
     return res.status(201).json({ token: issueToken(user), user })
   } catch (error) {
-    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'An account with this email already exists. Sign in instead.' })
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.code === '23505') {
+      return res.status(409).json({ error: 'An account with this email already exists. Sign in instead.' })
+    }
     return next(error)
   }
 }
@@ -96,7 +98,7 @@ export async function register(req, res, next) {
 export async function login(req, res) {
   const parsed = credentialsSchema.pick({ email: true, password: true }).safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'Enter a valid email and password.' })
-  const row = database.prepare('SELECT id, name, email, password_hash FROM users WHERE email = ?').get(parsed.data.email)
+  const row = await database.prepare('SELECT id, name, email, password_hash FROM users WHERE email = ?').get(parsed.data.email)
   const valid = row ? await verifyPassword(parsed.data.password, row.password_hash) : false
   if (!valid) return res.status(401).json({ error: 'Email or password is incorrect.' })
   const user = { id: row.id, name: row.name, email: row.email }

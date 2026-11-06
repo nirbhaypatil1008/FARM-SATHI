@@ -47,31 +47,33 @@ function validContext(context) {
   return context
 }
 
-function ensureConversation(userId, conversationId, title = 'New conversation') {
+async function ensureConversation(userId, conversationId, title = 'New conversation') {
   if (conversationId) {
-    const row = database.prepare('SELECT id, title FROM conversations WHERE id = ? AND user_id = ?').get(conversationId, userId)
+    const row = await database.prepare('SELECT id, title FROM conversations WHERE id = ? AND user_id = ?').get(conversationId, userId)
     if (!row) {
       const error = new Error('Conversation not found. Start a new chat.')
       error.status = 404
       throw error
     }
-    if (row.title === 'New conversation' && !database.prepare('SELECT 1 FROM messages WHERE conversation_id = ? LIMIT 1').get(conversationId)) {
-      database.prepare('UPDATE conversations SET title = ? WHERE id = ?').run(title.slice(0, 80), conversationId)
+    const hasMsg = await database.prepare('SELECT 1 FROM messages WHERE conversation_id = ? LIMIT 1').get(conversationId)
+    if (row.title === 'New conversation' && !hasMsg) {
+      await database.prepare('UPDATE conversations SET title = ? WHERE id = ?').run(title.slice(0, 80), conversationId)
     }
     return conversationId
   }
   const id = randomUUID()
-  database.prepare('INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)').run(id, userId, title.slice(0, 80))
+  await database.prepare('INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)').run(id, userId, title.slice(0, 80))
   return id
 }
 
-function savedHistory(conversationId) {
-  return database.prepare('SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 20').all(conversationId).reverse()
+async function savedHistory(conversationId) {
+  const rows = await database.prepare('SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, id DESC LIMIT 20').all(conversationId)
+  return rows.reverse()
 }
 
-function saveMessage(conversationId, role, content) {
-  database.prepare('INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)').run(randomUUID(), conversationId, role, content)
-  database.prepare("UPDATE conversations SET updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?").run(conversationId)
+async function saveMessage(conversationId, role, content) {
+  await database.prepare('INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)').run(randomUUID(), conversationId, role, content)
+  await database.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(conversationId)
 }
 
 function parseRequest(body) {
@@ -90,11 +92,11 @@ export async function chat(req, res, next) {
   try {
     const input = parseRequest(req.body)
     const userId = req.user?.id
-    const conversationId = userId ? ensureConversation(userId, input.conversationId, input.message) : undefined
-    const recent = conversationId ? savedHistory(conversationId) : input.history
+    const conversationId = userId ? await ensureConversation(userId, input.conversationId, input.message) : undefined
+    const recent = conversationId ? await savedHistory(conversationId) : input.history
     const isRetry = recent.at(-1)?.role === 'user' && recent.at(-1).content === input.message
     const history = isRetry ? recent.slice(0, -1) : recent
-    if (!isRetry && conversationId) saveMessage(conversationId, 'user', input.message)
+    if (!isRetry && conversationId) await saveMessage(conversationId, 'user', input.message)
 
     const detectedLanguage = detectLanguageFromText(input.message, input.language)
     const detection = detectIntent(input.message)
@@ -106,7 +108,7 @@ export async function chat(req, res, next) {
     // 1. Instant built-in answer (no external API)
     const local = answerLocally({ message: input.message, language: detectedLanguage, context: farmerContext, mode: input.mode, geminiAvailable: geminiReady, detection })
     if (local) {
-      if (conversationId) saveMessage(conversationId, 'model', local.reply)
+      if (conversationId) await saveMessage(conversationId, 'model', local.reply)
       return res.json({ ...(conversationId ? { conversationId } : {}), reply: local.reply, language: detectedLanguage, source: 'local', suggestions: local.suggestions })
     }
 
@@ -120,7 +122,7 @@ export async function chat(req, res, next) {
         selectedLanguage: detectedLanguage,
       },
     })
-    if (conversationId) saveMessage(conversationId, 'model', reply)
+    if (conversationId) await saveMessage(conversationId, 'model', reply)
     return res.json({ ...(conversationId ? { conversationId } : {}), reply, language: detectedLanguage, source: 'gemini' })
   } catch (error) {
     return next(error)
@@ -145,12 +147,12 @@ export async function streamChat(req, res, next) {
   try {
     const input = parseRequest(req.body)
     const userId = req.user?.id
-    conversationId = userId ? ensureConversation(userId, input.conversationId, input.message) : randomUUID()
-    const recent = userId ? savedHistory(conversationId) : input.history
+    conversationId = userId ? await ensureConversation(userId, input.conversationId, input.message) : randomUUID()
+    const recent = userId ? await savedHistory(conversationId) : input.history
     const isRetry = recent.at(-1)?.role === 'user' && recent.at(-1).content === input.message
     const history = isRetry ? recent.slice(0, -1) : recent
     userMessage = input.message
-    if (!isRetry && userId) saveMessage(conversationId, 'user', userMessage)
+    if (!isRetry && userId) await saveMessage(conversationId, 'user', userMessage)
 
     const detectedLanguage = detectLanguageFromText(input.message, input.language)
     const detection = detectIntent(input.message)
@@ -173,14 +175,14 @@ export async function streamChat(req, res, next) {
       const text = notice ? `> ⚠️ ${notice}\n> Here is a quick answer from FARM-SAATHI's built-in farm knowledge.\n\n${local.reply}` : local.reply
       await writeLocalStream(res, text)
       if (local.suggestions?.length) res.write(`event: suggestions\ndata: ${JSON.stringify({ suggestions: local.suggestions })}\n\n`)
-      if (userId) saveMessage(conversationId, 'model', text)
+      if (userId) await saveMessage(conversationId, 'model', text)
       res.write(`event: done\ndata: ${JSON.stringify({ conversationId, source })}\n\n`)
       return res.end()
     }
 
     // 1. Instant built-in answer (no external API call)
     const local = answerLocally({ message: input.message, language: detectedLanguage, context: farmerContext, mode: input.mode, geminiAvailable: geminiReady, detection })
-    if (local) return sendLocal(local, 'local')
+    if (local) return await sendLocal(local, 'local')
 
     // 2. Deep answer from Gemini, with built-in fallback if the API is unavailable
     res.write(`event: meta\ndata: ${JSON.stringify({ source: 'gemini' })}\n\n`)
@@ -199,33 +201,30 @@ export async function streamChat(req, res, next) {
         res.write(`event: delta\ndata: ${JSON.stringify({ text: chunk })}\n\n`)
       }
     } catch (geminiError) {
-      if (reply) throw geminiError
+      console.warn('Gemini stream failed, falling back to local assistant:', geminiError.message)
       const fallback = answerLocally({ message: input.message, language: detectedLanguage, context: farmerContext, mode: 'quick', geminiAvailable: false, detection, force: true })
-      return sendLocal(fallback, 'local-fallback', `AI deep mode is unavailable right now: ${geminiError.message || 'unknown error'}`)
+      return await sendLocal(fallback, 'local-fallback', `AI deep mode is unavailable right now: ${geminiError.message || 'unknown error'}`)
     }
-    if (userId) saveMessage(conversationId, 'model', reply)
+
+    if (userId) await saveMessage(conversationId, 'model', reply)
     res.write(`event: done\ndata: ${JSON.stringify({ conversationId, source: 'gemini' })}\n\n`)
     return res.end()
   } catch (error) {
-    if (res.headersSent) {
-      res.write(`event: error\ndata: ${JSON.stringify({ error: error.message || 'Chat stream failed.' })}\n\n`)
-      return res.end()
+    if (conversationId && userMessage) {
+      try {
+        await database.prepare('DELETE FROM messages WHERE id = (SELECT id FROM messages WHERE conversation_id = ? AND role = ? ORDER BY created_at DESC, id DESC LIMIT 1)').run(conversationId, 'user')
+      } catch (cleanupError) {
+        console.error('Could not remove the last user message after a failed chat response.', cleanupError)
+      }
     }
     return next(error)
   }
 }
 
-/** Lightweight summary of the farmer's live data for the assistant header badges. */
 export async function contextSummary(req, res, next) {
   try {
-    const location = String(req.query.location || '').slice(0, 120)
-    const ctx = await buildFarmerGroundingContext(req.user.id, { location: { village: location } })
-    const soil = Array.isArray(ctx.soilAnalyzer.latestReports) ? ctx.soilAnalyzer.latestReports[0] : null
-    const plant = Array.isArray(ctx.plantAnalyzer.latestDiagnoses) ? ctx.plantAnalyzer.latestDiagnoses[0] : null
+    const ctx = await buildFarmerGroundingContext(req.user?.id, {}, { includeWeather: false })
     return res.json({
-      soil: soil ? { type: soil.predictedSoilClass, confidence: soil.modelConfidence } : null,
-      plant: plant ? { crop: plant.cropName, condition: plant.diagnosedCondition, severity: plant.severity } : null,
-      weather: ctx.weather?.currentTemperature ? { location: ctx.weather.location, temperature: ctx.weather.currentTemperature, humidity: ctx.weather.relativeHumidity } : null,
       todayTasks: Array.isArray(ctx.farmCalendar.todayActivities) ? ctx.farmCalendar.todayActivities.length : 0,
       overdueTasks: Array.isArray(ctx.farmCalendar.overdueActivities) ? ctx.farmCalendar.overdueActivities.length : 0,
       activeCrops: Array.isArray(ctx.activeCrops) ? ctx.activeCrops.length : 0,
@@ -236,35 +235,35 @@ export async function contextSummary(req, res, next) {
   }
 }
 
-export function history(req, res, next) {
+export async function history(req, res, next) {
   try {
     const parsed = historyContextSchema.safeParse(req.query)
     if (!parsed.success) return res.status(400).json({ error: 'Invalid conversation id.' })
     const rows = parsed.data.conversationId
-      ? database.prepare('SELECT id, title, created_at, updated_at FROM conversations WHERE id = ? AND user_id = ?').all(parsed.data.conversationId, req.user.id)
-      : database.prepare('SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50').all(req.user.id)
-    const conversations = rows.map((row) => ({
+      ? await database.prepare('SELECT id, title, created_at, updated_at FROM conversations WHERE id = ? AND user_id = ?').all(parsed.data.conversationId, req.user.id)
+      : await database.prepare('SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50').all(req.user.id)
+    const conversations = await Promise.all(rows.map(async (row) => ({
       ...row,
-      messages: database.prepare('SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC').all(row.id),
-    }))
+      messages: await database.prepare('SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, id ASC').all(row.id),
+    })))
     return res.json({ conversations })
   } catch (error) {
     return next(error)
   }
 }
 
-export function newConversation(req, res) {
+export async function newConversation(req, res) {
   const id = randomUUID()
-  database.prepare('INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)').run(id, req.user.id, 'New conversation')
+  await database.prepare('INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)').run(id, req.user.id, 'New conversation')
   return res.status(201).json({ conversationId: id })
 }
 
-export function renameConversation(req, res, next) {
+export async function renameConversation(req, res, next) {
   try {
     const { id } = req.params
     const { title } = req.body || {}
     if (!title || !title.trim()) return res.status(400).json({ error: 'Conversation title cannot be empty.' })
-    const result = database.prepare('UPDATE conversations SET title = ?, updated_at = strftime(\'%Y-%m-%d %H:%M:%f\', \'now\') WHERE id = ? AND user_id = ?').run(title.trim().slice(0, 80), id, req.user.id)
+    const result = await database.prepare("UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").run(title.trim().slice(0, 80), id, req.user.id)
     if (!result.changes) return res.status(404).json({ error: 'Conversation not found.' })
     return res.json({ success: true, title: title.trim().slice(0, 80) })
   } catch (error) {
@@ -272,20 +271,20 @@ export function renameConversation(req, res, next) {
   }
 }
 
-export function deleteAllConversations(req, res, next) {
+export async function deleteAllConversations(req, res, next) {
   try {
-    const result = database.prepare('DELETE FROM conversations WHERE user_id = ?').run(req.user.id)
+    const result = await database.prepare('DELETE FROM conversations WHERE user_id = ?').run(req.user.id)
     return res.json({ deleted: result.changes })
   } catch (error) {
     return next(error)
   }
 }
 
-export function deleteConversation(req, res, next) {
+export async function deleteConversation(req, res, next) {
   try {
     const parsed = z.string().uuid().safeParse(req.params.id)
     if (!parsed.success) return res.status(400).json({ error: 'Invalid conversation id.' })
-    const result = database.prepare('DELETE FROM conversations WHERE id = ? AND user_id = ?').run(parsed.data, req.user.id)
+    const result = await database.prepare('DELETE FROM conversations WHERE id = ? AND user_id = ?').run(parsed.data, req.user.id)
     if (!result.changes) return res.status(404).json({ error: 'Conversation not found.' })
     return res.status(204).end()
   } catch (error) {

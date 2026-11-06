@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 180" width="100%" height="100%">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="sunGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFD54F" />
+      <stop offset="100%" stop-color="#FFB300" />
+    </linearGradient>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#66BB6A" />
+      <stop offset="100%" stop-color="#2E7D32" />
+    </linearGradient>
+    <linearGradient id="fieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#81C784" />
+      <stop offset="100%" stop-color="#388E3C" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="2" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.1" />
+    </filter>
+  </defs>
+
+  <!-- Logo Icon Badge -->
+  <g transform="translate(10, 10)" filter="url(#shadow)">
+    <!-- Outer Circular Base -->
+    <circle cx="80" cy="80" r="70" fill="#E8F5E9" stroke="#C8E6C9" stroke-width="4" />
+    
+    <!-- Sun -->
+    <circle cx="80" cy="65" r="24" fill="url(#sunGrad)" />
+    
+    <!-- Field Hills -->
+    <path d="M 15 110 Q 40 90 80 110 T 145 110 L 145 140 C 145 145 140 150 135 150 L 25 150 C 20 150 15 145 15 140 Z" fill="url(#fieldGrad)" />
+
+    <!-- Growing Sprout / Leaves -->
+    <!-- Stem -->
+    <path d="M 80 120 Q 80 95 80 80" stroke="#33691E" stroke-width="5" stroke-linecap="round" fill="none" />
+    <!-- Left Leaf -->
+    <path d="M 80 95 C 65 90 50 95 45 105 C 50 115 65 115 80 105 Z" fill="url(#leafGrad)" />
+    <!-- Right Leaf -->
+    <path d="M 80 85 C 95 80 110 85 115 95 C 110 105 95 105 80 95 Z" fill="url(#leafGrad)" />
+    <!-- Center Sprout Tip -->
+    <path d="M 80 80 C 78 72 80 62 80 50 C 80 62 82 72 80 80 Z" fill="#4CAF50" />
+  </g>
+
+  <!-- Typography Group -->
+  <g transform="translate(180, 0)">
+    <!-- FARM Text -->
+    <text x="0" y="90" font-family="system-ui, -apple-system, &#39;Segoe UI&#39;, Roboto, Helvetica, Arial, sans-serif" font-weight="900" font-size="60" fill="#1B5E20" letter-spacing="1">FARM</text>
+    
+    <!-- Hyphen -->
+    <text x="205" y="90" font-family="system-ui, -apple-system, &#39;Segoe UI&#39;, Roboto, Helvetica, Arial, sans-serif" font-weight="700" font-size="60" fill="#4CAF50">-</text>
+
+    <!-- SATHI Text -->
+    <text x="230" y="90" font-family="system-ui, -apple-system, &#39;Segoe UI&#39;, Roboto, Helvetica, Arial, sans-serif" font-weight="700" font-size="60" fill="#E65100" letter-spacing="1">SATHI</text>
+    
+    <!-- Tagline -->
+    <text x="3" y="122" font-family="system-ui, -apple-system, &#39;Segoe UI&#39;, Roboto, Helvetica, Arial, sans-serif" font-weight="600" font-size="14" fill="#558B2F" letter-spacing="5">YOUR AGRICULTURAL COMPANION</text>
+    
+    <!-- Decorative Underline -->
+    <path d="M 3 138 L 425 138" stroke="#C8E6C9" stroke-width="2.5" stroke-linecap="round" />
+    <circle cx="214" cy="138" r="4.5" fill="#2E7D32" />
+  </g>
+</svg>

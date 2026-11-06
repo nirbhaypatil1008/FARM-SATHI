@@ -1,14 +1,12 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import multer from 'multer'
 import { z } from 'zod'
 import { aiServiceUnavailableMessage } from './aiServiceErrors.js'
 import { config } from './config.js'
 import { database } from './db.js'
+import { deleteStoredImage, savePersistentImage, serveStoredImage } from './storage.js'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-const imageDirectory = path.join(path.dirname(config.DATABASE_FILE), 'soil-analyses')
 const allowedTypes = new Map([
   ['image/jpeg', { extension: 'jpg', matches: (buffer) => buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff }],
   ['image/png', { extension: 'png', matches: (buffer) => buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) }],
@@ -49,16 +47,14 @@ const predictionSchema = z.object({
   visual_characteristics: z.array(z.string().max(300)).max(10),
 }).passthrough()
 
-const statusSchema = z.object({
+const statusResponseSchema = z.object({
   model_loaded: z.boolean(),
-  model_name: z.string(),
-  model_version: z.string().nullable(),
-  class_count: z.number().int().nonnegative(),
-  preprocessing: z.enum(['embedded_mobilenet_v2', 'mobilenet_v2']).default('embedded_mobilenet_v2'),
-  message: z.string(),
+  model_name: z.string().default('MobileNetV2'),
+  model_version: z.string().nullable().default(null),
+  class_count: z.number().int().min(0).default(0),
+  preprocessing: z.string().default('embedded_mobilenet_v2'),
+  message: z.string().default(''),
 })
-
-fs.mkdirSync(imageDirectory, { recursive: true })
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -86,18 +82,20 @@ export async function soilModelStatus(_req, res) {
       signal: AbortSignal.timeout(5000),
     })
     const body = await response.json().catch(() => ({}))
-    if (!response.ok) return res.status(response.status >= 500 ? 503 : 502).json({ error: body.detail || 'Could not read soil model status.', model_loaded: false })
-    const status = statusSchema.safeParse(body)
-    if (!status.success) {
-      console.error('TensorFlow service returned an invalid soil readiness response.')
+    if (!response.ok) {
+      return res.status(response.status === 503 ? 503 : 502).json({
+        error: body.detail || body.message || 'Soil analysis service is unavailable.',
+        model_loaded: false,
+      })
+    }
+    const parsed = statusResponseSchema.safeParse(body)
+    if (!parsed.success) {
+      console.error('TensorFlow service returned an invalid soil readiness response.', parsed.error)
       return res.status(502).json({ error: 'The AI service returned an invalid soil readiness response.', model_loaded: false })
     }
-    return res.json(status.data)
+    return res.json(parsed.data)
   } catch (error) {
-    return res.status(503).json({
-      error: aiServiceUnavailableMessage(error, 'soil-model readiness check'),
-      model_loaded: false,
-    })
+    return res.status(503).json({ error: aiServiceUnavailableMessage(error, 'soil-analysis AI service'), model_loaded: false })
   }
 }
 
@@ -107,30 +105,30 @@ function validateInput(req) {
     error.status = 400
     throw error
   }
-  const fileType = allowedTypes.get(req.file.mimetype)
-  if (!fileType || !fileType.matches(req.file.buffer)) {
+  const mime = allowedTypes.get(req.file.mimetype)
+  if (!mime || !mime.matches(req.file.buffer)) {
     const error = new Error('The selected file is not a valid image of the declared type.')
     error.status = 400
     throw error
   }
   const fields = analysisFields.safeParse(req.body)
   if (!fields.success) {
-    const error = new Error('Invalid input fields provided.')
+    const error = new Error('Invalid soil parameters provided.')
     error.status = 400
+    error.details = fields.error.flatten().fieldErrors
     throw error
   }
-  return { ...fields.data, ...fileType, mimeType: req.file.mimetype }
+  return { ...fields.data, ...mime, mimeType: req.file.mimetype }
 }
 
 function formatAnalysis(row) {
-  const resultJson = JSON.parse(row.result_json)
   return {
     id: row.id,
     cropName: row.crop_name,
     location: row.location,
     imageUrl: `/api/soil/history/${row.id}/image`,
     createdAt: row.created_at,
-    ...resultJson,
+    ...JSON.parse(row.result_json),
   }
 }
 
@@ -175,7 +173,7 @@ export async function analyzeSoil(req, res, next) {
       organicCarbon: input.organicCarbon || null,
       soilMoisture: input.soilMoisture || null,
       soilTemperature: input.soilTemperature || null,
-      measurementSource: input.measurementSource || 'farmer_entered',
+      source: input.measurementSource,
     }
 
     const result = {
@@ -194,40 +192,41 @@ export async function analyzeSoil(req, res, next) {
       })
     }
     const id = randomUUID()
-    savedFilename = `${id}.${input.extension}`
-    await fs.promises.writeFile(path.join(imageDirectory, savedFilename), req.file.buffer, { flag: 'wx', mode: 0o600 })
-    database.prepare(`
+    const stored = await savePersistentImage({
+      folder: 'soil-analyses',
+      buffer: req.file.buffer,
+      mimeType: input.mimeType,
+      extension: input.extension,
+    })
+    savedFilename = stored.identifier
+    await database.prepare(`
       INSERT INTO soil_analyses
         (id, user_id, crop_name, location, image_filename, image_mime_type, predicted_class, confidence, model_version, result_json)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, req.user.id, input.cropName, input.location, savedFilename, input.mimeType, result.predicted_class, result.confidence, result.model_version, JSON.stringify(result))
-    const row = database.prepare('SELECT * FROM soil_analyses WHERE id = ? AND user_id = ?').get(id, req.user.id)
+    const row = await database.prepare('SELECT * FROM soil_analyses WHERE id = ? AND user_id = ?').get(id, req.user.id)
     return res.status(201).json({ analysis: formatAnalysis(row) })
   } catch (error) {
     if (savedFilename) {
-      try {
-        await fs.promises.unlink(path.join(imageDirectory, savedFilename))
-      } catch (cleanupError) {
-        if (cleanupError.code !== 'ENOENT') console.error('Could not remove an unreferenced soil image.', cleanupError)
-      }
+      await deleteStoredImage(savedFilename, 'soil-analyses')
     }
     if (error.status) return res.status(error.status).json({ error: error.message })
     return next(error)
   }
 }
 
-export function soilHistory(req, res, next) {
+export async function soilHistory(req, res, next) {
   try {
-    const rows = database.prepare('SELECT * FROM soil_analyses WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').all(req.user.id)
+    const rows = await database.prepare('SELECT * FROM soil_analyses WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').all(req.user.id)
     return res.json({ analyses: rows.map(formatAnalysis) })
   } catch (error) {
     return next(error)
   }
 }
 
-export function soilAnalysisDetails(req, res, next) {
+export async function soilAnalysisDetails(req, res, next) {
   try {
-    const row = database.prepare('SELECT * FROM soil_analyses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+    const row = await database.prepare('SELECT * FROM soil_analyses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
     if (!row) return res.status(404).json({ error: 'Soil analysis not found.' })
     return res.json({ analysis: formatAnalysis(row) })
   } catch (error) {
@@ -235,14 +234,11 @@ export function soilAnalysisDetails(req, res, next) {
   }
 }
 
-export function soilAnalysisImage(req, res, next) {
+export async function soilAnalysisImage(req, res, next) {
   try {
-    const row = database.prepare('SELECT image_filename, image_mime_type FROM soil_analyses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+    const row = await database.prepare('SELECT image_filename, image_mime_type FROM soil_analyses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
     if (!row) return res.status(404).json({ error: 'Soil analysis image not found.' })
-    const imagePath = path.join(imageDirectory, path.basename(row.image_filename))
-    return res.type(row.image_mime_type).set('Cache-Control', 'private, no-store').sendFile(imagePath, (error) => {
-      if (error && !res.headersSent) return next(error)
-    })
+    return await serveStoredImage(res, row.image_filename, row.image_mime_type, 'soil-analyses')
   } catch (error) {
     return next(error)
   }
@@ -250,14 +246,10 @@ export function soilAnalysisImage(req, res, next) {
 
 export async function deleteSoilAnalysis(req, res, next) {
   try {
-    const row = database.prepare('SELECT image_filename FROM soil_analyses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+    const row = await database.prepare('SELECT image_filename FROM soil_analyses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
     if (!row) return res.status(404).json({ error: 'Soil analysis not found.' })
-    database.prepare('DELETE FROM soil_analyses WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id)
-    try {
-      await fs.promises.unlink(path.join(imageDirectory, path.basename(row.image_filename)))
-    } catch (error) {
-      if (error.code !== 'ENOENT') return next(error)
-    }
+    await database.prepare('DELETE FROM soil_analyses WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id)
+    await deleteStoredImage(row.image_filename, 'soil-analyses')
     return res.status(204).end()
   } catch (error) {
     return next(error)

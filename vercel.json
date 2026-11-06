@@ -5,10 +5,6 @@
       "root": ".",
       "framework": "vite"
     },
-    "ai-service": {
-      "root": "ai-service",
-      "framework": "fastapi"
-    },
     "server": {
       "root": "server",
       "framework": "express",
@@ -20,11 +16,21 @@
           "env": "AI_SERVICE_URL"
         }
       ]
+    },
+    "ai-service": {
+      "root": "ai-service",
+      "framework": "fastapi"
     }
   },
   "rewrites": [
     {
       "source": "/api/(.*)",
+      "destination": {
+        "service": "server"
+      }
+    },
+    {
+      "source": "/api",
       "destination": {
         "service": "server"
       }
@@ -37,4 +43,3 @@
     }
   ]
 }
-

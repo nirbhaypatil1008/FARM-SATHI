@@ -66,9 +66,8 @@ export async function createCropCycle(req, res, next) {
 
     const cycleId = randomUUID()
 
-    const createTransaction = database.transaction(() => {
-      // Insert crop cycle
-      database.prepare(`
+    const runInserts = async () => {
+      await database.prepare(`
         INSERT INTO crop_cycles (
           id, user_id, crop_name, crop_variety, field_name, farm_area,
           sowing_date, crop_duration_days, expected_harvest_date,
@@ -81,35 +80,66 @@ export async function createCropCycle(req, res, next) {
         schedule.soilType, schedule.irrigationType, schedule.waterAvailability
       )
 
-      // Insert tasks
-      const insertTaskStmt = database.prepare(`
-        INSERT INTO calendar_tasks (
-          id, user_id, crop_cycle_id, crop_name, title, activity_type,
-          stage_name, scheduled_date, original_date, status, priority,
-          description, fertilizer_details, irrigation_details, weather_warning
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, NULL)
-      `)
-
-      const insertHistoryStmt = database.prepare(`
-        INSERT INTO task_history (id, task_id, user_id, action, new_status, new_date, reason)
-        VALUES (?, ?, ?, 'created', 'pending', ?, 'Generated via AI Crop Schedule Engine')
-      `)
-
       for (const t of schedule.tasks) {
         const taskId = randomUUID()
-        insertTaskStmt.run(
+        await database.prepare(`
+          INSERT INTO calendar_tasks (
+            id, user_id, crop_cycle_id, crop_name, title, activity_type,
+            stage_name, scheduled_date, original_date, status, priority,
+            description, fertilizer_details, irrigation_details, weather_warning
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, NULL)
+        `).run(
           taskId, userId, cycleId, schedule.cropName, t.title, t.activityType,
           t.stageName, t.scheduledDate, t.originalDate, t.priority,
           t.description, t.fertilizerDetails, t.irrigationDetails
         )
-        insertHistoryStmt.run(randomUUID(), taskId, userId, t.scheduledDate)
+        await database.prepare(`
+          INSERT INTO task_history (id, task_id, user_id, action, new_status, new_date, reason)
+          VALUES (?, ?, ?, 'created', 'pending', ?, 'Generated via AI Crop Schedule Engine')
+        `).run(randomUUID(), taskId, userId, t.scheduledDate)
       }
-    })
+    }
 
-    createTransaction()
+    if (database.transaction && !database.isPostgres) {
+      database.transaction(() => {
+        database.prepare(`
+          INSERT INTO crop_cycles (
+            id, user_id, crop_name, crop_variety, field_name, farm_area,
+            sowing_date, crop_duration_days, expected_harvest_date,
+            soil_type, irrigation_type, water_availability, current_stage_index,
+            health_status, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'Good', 'active')
+        `).run(
+          cycleId, userId, schedule.cropName, schedule.cropVariety, data.fieldName, schedule.farmArea,
+          schedule.sowingDate, schedule.cropDurationDays, schedule.expectedHarvestDate,
+          schedule.soilType, schedule.irrigationType, schedule.waterAvailability
+        )
 
-    const createdCycle = database.prepare('SELECT * FROM crop_cycles WHERE id = ?').get(cycleId)
-    const createdTasks = database.prepare('SELECT * FROM calendar_tasks WHERE crop_cycle_id = ? ORDER BY scheduled_date ASC').all(cycleId)
+        for (const t of schedule.tasks) {
+          const taskId = randomUUID()
+          database.prepare(`
+            INSERT INTO calendar_tasks (
+              id, user_id, crop_cycle_id, crop_name, title, activity_type,
+              stage_name, scheduled_date, original_date, status, priority,
+              description, fertilizer_details, irrigation_details, weather_warning
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, NULL)
+          `).run(
+            taskId, userId, cycleId, schedule.cropName, t.title, t.activityType,
+            t.stageName, t.scheduledDate, t.originalDate, t.priority,
+            t.description, t.fertilizerDetails, t.irrigationDetails
+          )
+          database.prepare(`
+            INSERT INTO task_history (id, task_id, user_id, action, new_status, new_date, reason)
+            VALUES (?, ?, ?, 'created', 'pending', ?, 'Generated via AI Crop Schedule Engine')
+          `).run(randomUUID(), taskId, userId, t.scheduledDate)
+        }
+      })()
+    } else {
+      await runInserts()
+    }
+
+    const createdCycle = await database.prepare('SELECT * FROM crop_cycles WHERE id = ?').get(cycleId)
+    const createdTasks = await database.prepare('SELECT * FROM calendar_tasks WHERE crop_cycle_id = ? ORDER BY scheduled_date ASC').all(cycleId)
 
     return res.status(201).json({
       success: true,
@@ -124,18 +154,19 @@ export async function createCropCycle(req, res, next) {
 }
 
 // 2. List All Crop Cycles for Authenticated Farmer
-export function listCropCycles(req, res, next) {
+export async function listCropCycles(req, res, next) {
   try {
     const userId = req.user.id
-    const cycles = database.prepare(`
+    const today = dateToday()
+    const cycles = await database.prepare(`
       SELECT c.*,
         (SELECT COUNT(*) FROM calendar_tasks WHERE crop_cycle_id = c.id) as total_tasks,
         (SELECT COUNT(*) FROM calendar_tasks WHERE crop_cycle_id = c.id AND status = 'completed') as completed_tasks,
-        (SELECT COUNT(*) FROM calendar_tasks WHERE crop_cycle_id = c.id AND status = 'pending' AND scheduled_date <= date('now')) as due_tasks
+        (SELECT COUNT(*) FROM calendar_tasks WHERE crop_cycle_id = c.id AND status = 'pending' AND scheduled_date <= ?) as due_tasks
       FROM crop_cycles c
       WHERE c.user_id = ?
       ORDER BY c.created_at DESC
-    `).all(userId)
+    `).all(today, userId)
 
     const enhanced = cycles.map((c) => {
       const template = getCropTemplate(c.crop_name)
@@ -157,17 +188,17 @@ export function listCropCycles(req, res, next) {
 }
 
 // 3. Get Details of a Specific Crop Cycle
-export function getCropCycleDetails(req, res, next) {
+export async function getCropCycleDetails(req, res, next) {
   try {
     const userId = req.user.id
     const cycleId = req.params.id
 
-    const cycle = database.prepare('SELECT * FROM crop_cycles WHERE id = ? AND user_id = ?').get(cycleId, userId)
+    const cycle = await database.prepare('SELECT * FROM crop_cycles WHERE id = ? AND user_id = ?').get(cycleId, userId)
     if (!cycle) return res.status(404).json({ error: 'Crop cycle not found.' })
 
-    const tasks = database.prepare('SELECT * FROM calendar_tasks WHERE crop_cycle_id = ? AND user_id = ? ORDER BY scheduled_date ASC').all(cycleId, userId)
-    const observations = database.prepare('SELECT * FROM crop_observations WHERE crop_cycle_id = ? AND user_id = ? ORDER BY date DESC').all(cycleId, userId)
-    const expenses = database.prepare('SELECT * FROM farm_expenses WHERE crop_cycle_id = ? AND user_id = ? ORDER BY date DESC').all(cycleId, userId)
+    const tasks = await database.prepare('SELECT * FROM calendar_tasks WHERE crop_cycle_id = ? AND user_id = ? ORDER BY scheduled_date ASC').all(cycleId, userId)
+    const observations = await database.prepare('SELECT * FROM crop_observations WHERE crop_cycle_id = ? AND user_id = ? ORDER BY date DESC').all(cycleId, userId)
+    const expenses = await database.prepare('SELECT * FROM farm_expenses WHERE crop_cycle_id = ? AND user_id = ? ORDER BY date DESC').all(cycleId, userId)
 
     const template = getCropTemplate(cycle.crop_name)
     const age = daysSince(cycle.sowing_date)
@@ -188,16 +219,16 @@ export function getCropCycleDetails(req, res, next) {
 }
 
 // 4. Update Crop Cycle
-export function updateCropCycle(req, res, next) {
+export async function updateCropCycle(req, res, next) {
   try {
     const userId = req.user.id
     const cycleId = req.params.id
     const { cropVariety, fieldName, currentStageIndex, healthStatus, actualHarvestDate, status } = req.body
 
-    const existing = database.prepare('SELECT id FROM crop_cycles WHERE id = ? AND user_id = ?').get(cycleId, userId)
+    const existing = await database.prepare('SELECT id FROM crop_cycles WHERE id = ? AND user_id = ?').get(cycleId, userId)
     if (!existing) return res.status(404).json({ error: 'Crop cycle not found.' })
 
-    database.prepare(`
+    await database.prepare(`
       UPDATE crop_cycles
       SET crop_variety = COALESCE(?, crop_variety),
           field_name = COALESCE(?, field_name),
@@ -205,11 +236,11 @@ export function updateCropCycle(req, res, next) {
           health_status = COALESCE(?, health_status),
           actual_harvest_date = COALESCE(?, actual_harvest_date),
           status = COALESCE(?, status),
-          updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).run(cropVariety, fieldName, currentStageIndex, healthStatus, actualHarvestDate, status, cycleId, userId)
 
-    const updated = database.prepare('SELECT * FROM crop_cycles WHERE id = ?').get(cycleId)
+    const updated = await database.prepare('SELECT * FROM crop_cycles WHERE id = ?').get(cycleId)
     return res.json({ success: true, cropCycle: updated })
   } catch (error) {
     return next(error)
@@ -217,12 +248,12 @@ export function updateCropCycle(req, res, next) {
 }
 
 // 5. Delete Crop Cycle & Associated Tasks
-export function deleteCropCycle(req, res, next) {
+export async function deleteCropCycle(req, res, next) {
   try {
     const userId = req.user.id
     const cycleId = req.params.id
 
-    const result = database.prepare('DELETE FROM crop_cycles WHERE id = ? AND user_id = ?').run(cycleId, userId)
+    const result = await database.prepare('DELETE FROM crop_cycles WHERE id = ? AND user_id = ?').run(cycleId, userId)
     if (!result.changes) return res.status(404).json({ error: 'Crop cycle not found.' })
 
     return res.json({ success: true, message: 'Crop cycle and scheduled tasks deleted.' })
@@ -246,7 +277,7 @@ export function generateSchedulePreview(req, res, next) {
 }
 
 // 7. List Tasks with Filters (Date range, Crop, Activity type, Status)
-export function listTasks(req, res, next) {
+export async function listTasks(req, res, next) {
   try {
     const userId = req.user.id
     const { cropCycleId, status, fromDate, toDate, activityType } = req.query
@@ -276,7 +307,7 @@ export function listTasks(req, res, next) {
     }
 
     sql += ' ORDER BY scheduled_date ASC, priority DESC'
-    const tasks = database.prepare(sql).all(...params)
+    const tasks = await database.prepare(sql).all(...params)
 
     return res.json({ tasks })
   } catch (error) {
@@ -285,18 +316,18 @@ export function listTasks(req, res, next) {
 }
 
 // 8. Get Today's and Overdue Tasks
-export function getTodayTasks(req, res, next) {
+export async function getTodayTasks(req, res, next) {
   try {
     const userId = req.user.id
     const today = dateToday()
 
-    const todayTasks = database.prepare(`
+    const todayTasks = await database.prepare(`
       SELECT * FROM calendar_tasks
       WHERE user_id = ? AND scheduled_date = ?
       ORDER BY priority DESC, created_at ASC
     `).all(userId, today)
 
-    const overdueTasks = database.prepare(`
+    const overdueTasks = await database.prepare(`
       SELECT * FROM calendar_tasks
       WHERE user_id = ? AND scheduled_date < ? AND status = 'pending'
       ORDER BY scheduled_date ASC
@@ -318,13 +349,13 @@ export function getTodayTasks(req, res, next) {
 }
 
 // 9. Get Upcoming Tasks (Next 14 Days)
-export function getUpcomingTasks(req, res, next) {
+export async function getUpcomingTasks(req, res, next) {
   try {
     const userId = req.user.id
     const today = dateToday()
     const futureDate = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
 
-    const upcoming = database.prepare(`
+    const upcoming = await database.prepare(`
       SELECT * FROM calendar_tasks
       WHERE user_id = ? AND scheduled_date >= ? AND scheduled_date <= ?
       ORDER BY scheduled_date ASC
@@ -337,7 +368,7 @@ export function getUpcomingTasks(req, res, next) {
 }
 
 // 10. Create a Custom Task
-export function createCustomTask(req, res, next) {
+export async function createCustomTask(req, res, next) {
   try {
     const parsed = taskSchema.safeParse(req.body)
     if (!parsed.success) {
@@ -347,7 +378,7 @@ export function createCustomTask(req, res, next) {
     const userId = req.user.id
     const taskId = randomUUID()
 
-    database.prepare(`
+    await database.prepare(`
       INSERT INTO calendar_tasks (
         id, user_id, crop_cycle_id, crop_name, title, activity_type,
         stage_name, scheduled_date, original_date, status, priority,
@@ -362,12 +393,12 @@ export function createCustomTask(req, res, next) {
       data.irrigationDetails ? JSON.stringify(data.irrigationDetails) : null
     )
 
-    database.prepare(`
+    await database.prepare(`
       INSERT INTO task_history (id, task_id, user_id, action, new_status, new_date, reason)
       VALUES (?, ?, ?, 'created', 'pending', ?, 'Manually added by farmer')
     `).run(randomUUID(), taskId, userId, data.scheduledDate)
 
-    const task = database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
+    const task = await database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
     return res.status(201).json({ success: true, task })
   } catch (error) {
     return next(error)
@@ -375,27 +406,27 @@ export function createCustomTask(req, res, next) {
 }
 
 // 10b. Update a Task
-export function updateTask(req, res, next) {
+export async function updateTask(req, res, next) {
   try {
     const userId = req.user.id
     const taskId = req.params.id
     const { title, description, priority, scheduledDate, notes } = req.body
 
-    const existing = database.prepare('SELECT id FROM calendar_tasks WHERE id = ? AND user_id = ?').get(taskId, userId)
+    const existing = await database.prepare('SELECT id FROM calendar_tasks WHERE id = ? AND user_id = ?').get(taskId, userId)
     if (!existing) return res.status(404).json({ error: 'Task not found.' })
 
-    database.prepare(`
+    await database.prepare(`
       UPDATE calendar_tasks
       SET title = COALESCE(?, title),
           description = COALESCE(?, description),
           priority = COALESCE(?, priority),
           scheduled_date = COALESCE(?, scheduled_date),
           notes = COALESCE(?, notes),
-          updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).run(title, description, priority, scheduledDate, notes, taskId, userId)
 
-    const updated = database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
+    const updated = await database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
     return res.json({ success: true, task: updated })
   } catch (error) {
     return next(error)
@@ -403,30 +434,30 @@ export function updateTask(req, res, next) {
 }
 
 // 11. Complete a Task
-export function completeTask(req, res, next) {
+export async function completeTask(req, res, next) {
   try {
     const userId = req.user.id
     const taskId = req.params.id
     const { notes = '', actualCompletionDate = dateToday() } = req.body
 
-    const task = database.prepare('SELECT * FROM calendar_tasks WHERE id = ? AND user_id = ?').get(taskId, userId)
+    const task = await database.prepare('SELECT * FROM calendar_tasks WHERE id = ? AND user_id = ?').get(taskId, userId)
     if (!task) return res.status(404).json({ error: 'Task not found.' })
 
-    database.prepare(`
+    await database.prepare(`
       UPDATE calendar_tasks
       SET status = 'completed',
           completed_date = ?,
           notes = CASE WHEN ? != '' THEN ? ELSE notes END,
-          updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).run(actualCompletionDate, notes, notes, taskId, userId)
 
-    database.prepare(`
+    await database.prepare(`
       INSERT INTO task_history (id, task_id, user_id, action, previous_status, new_status, new_date, reason)
       VALUES (?, ?, ?, 'completed', ?, 'completed', ?, ?)
     `).run(randomUUID(), taskId, userId, task.status, actualCompletionDate, notes || 'Marked completed')
 
-    const updated = database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
+    const updated = await database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
     return res.json({ success: true, task: updated })
   } catch (error) {
     return next(error)
@@ -434,29 +465,29 @@ export function completeTask(req, res, next) {
 }
 
 // 12. Skip a Task
-export function skipTask(req, res, next) {
+export async function skipTask(req, res, next) {
   try {
     const userId = req.user.id
     const taskId = req.params.id
     const { reason = 'Not required for current field conditions' } = req.body
 
-    const task = database.prepare('SELECT * FROM calendar_tasks WHERE id = ? AND user_id = ?').get(taskId, userId)
+    const task = await database.prepare('SELECT * FROM calendar_tasks WHERE id = ? AND user_id = ?').get(taskId, userId)
     if (!task) return res.status(404).json({ error: 'Task not found.' })
 
-    database.prepare(`
+    await database.prepare(`
       UPDATE calendar_tasks
       SET status = 'skipped',
           rescheduled_reason = ?,
-          updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).run(reason, taskId, userId)
 
-    database.prepare(`
+    await database.prepare(`
       INSERT INTO task_history (id, task_id, user_id, action, previous_status, new_status, reason)
       VALUES (?, ?, ?, 'skipped', ?, 'skipped', ?)
     `).run(randomUUID(), taskId, userId, task.status, reason)
 
-    const updated = database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
+    const updated = await database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
     return res.json({ success: true, task: updated })
   } catch (error) {
     return next(error)
@@ -464,7 +495,7 @@ export function skipTask(req, res, next) {
 }
 
 // 13. Reschedule a Task
-export function rescheduleTask(req, res, next) {
+export async function rescheduleTask(req, res, next) {
   try {
     const userId = req.user.id
     const taskId = req.params.id
@@ -474,25 +505,25 @@ export function rescheduleTask(req, res, next) {
       return res.status(400).json({ error: 'Valid newDate (YYYY-MM-DD) is required.' })
     }
 
-    const task = database.prepare('SELECT * FROM calendar_tasks WHERE id = ? AND user_id = ?').get(taskId, userId)
+    const task = await database.prepare('SELECT * FROM calendar_tasks WHERE id = ? AND user_id = ?').get(taskId, userId)
     if (!task) return res.status(404).json({ error: 'Task not found.' })
 
-    database.prepare(`
+    await database.prepare(`
       UPDATE calendar_tasks
       SET scheduled_date = ?,
           status = 'rescheduled',
           rescheduled_reason = ?,
           weather_warning = NULL,
-          updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).run(newDate, reason, taskId, userId)
 
-    database.prepare(`
+    await database.prepare(`
       INSERT INTO task_history (id, task_id, user_id, action, previous_date, new_date, reason)
       VALUES (?, ?, ?, 'rescheduled', ?, ?, ?)
     `).run(randomUUID(), taskId, userId, task.scheduledDate, newDate, reason)
 
-    const updated = database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
+    const updated = await database.prepare('SELECT * FROM calendar_tasks WHERE id = ?').get(taskId)
     return res.json({ success: true, task: updated })
   } catch (error) {
     return next(error)
@@ -500,12 +531,12 @@ export function rescheduleTask(req, res, next) {
 }
 
 // 14. Delete a Task
-export function deleteTask(req, res, next) {
+export async function deleteTask(req, res, next) {
   try {
     const userId = req.user.id
     const taskId = req.params.id
 
-    const result = database.prepare('DELETE FROM calendar_tasks WHERE id = ? AND user_id = ?').run(taskId, userId)
+    const result = await database.prepare('DELETE FROM calendar_tasks WHERE id = ? AND user_id = ?').run(taskId, userId)
     if (!result.changes) return res.status(404).json({ error: 'Task not found.' })
 
     return res.json({ success: true, message: 'Task deleted.' })
@@ -526,7 +557,7 @@ export async function getWeatherAlerts(req, res, next) {
     // Fetch upcoming pending tasks for next 7 days
     const today = dateToday()
     const day7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
-    const upcomingTasks = database.prepare(`
+    const upcomingTasks = await database.prepare(`
       SELECT * FROM calendar_tasks
       WHERE user_id = ? AND scheduled_date >= ? AND scheduled_date <= ? AND status != 'completed'
     `).all(userId, today, day7)
@@ -534,17 +565,14 @@ export async function getWeatherAlerts(req, res, next) {
     // Evaluate conflicts
     const conflicts = evaluateWeatherConflicts(upcomingTasks, weather.daily)
 
-    // Save or update alerts in SQLite
-    const insertAlertStmt = database.prepare(`
-      INSERT INTO weather_alerts (id, user_id, task_id, alert_type, severity, forecast_date, message, recommended_action)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-
     for (const c of conflicts) {
       if (c.taskId) {
-        database.prepare(`UPDATE calendar_tasks SET weather_warning = ? WHERE id = ?`).run(c.message, c.taskId)
+        await database.prepare(`UPDATE calendar_tasks SET weather_warning = ? WHERE id = ?`).run(c.message, c.taskId)
       }
-      insertAlertStmt.run(randomUUID(), userId, c.taskId || null, c.alertType, c.severity, c.forecastDate, c.message, c.recommendedAction)
+      await database.prepare(`
+        INSERT INTO weather_alerts (id, user_id, task_id, alert_type, severity, forecast_date, message, recommended_action)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(randomUUID(), userId, c.taskId || null, c.alertType, c.severity, c.forecastDate, c.message, c.recommendedAction)
     }
 
     return res.json({
@@ -560,24 +588,24 @@ export async function getWeatherAlerts(req, res, next) {
 }
 
 // 16. Record an Actual Irrigation Application
-export function recordIrrigation(req, res, next) {
+export async function recordIrrigation(req, res, next) {
   try {
     const userId = req.user.id
     const { taskId, cropCycleId, method = 'Drip', durationMinutes = 60, notes = '', date = dateToday() } = req.body
 
     if (taskId) {
-      database.prepare(`
+      await database.prepare(`
         UPDATE calendar_tasks
         SET status = 'completed',
             completed_date = ?,
             notes = ?,
-            updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND user_id = ?
       `).run(date, `Irrigated using ${method} for ${durationMinutes} mins. ${notes}`, taskId, userId)
     }
 
     // Record in history
-    database.prepare(`
+    await database.prepare(`
       INSERT INTO task_history (id, task_id, user_id, action, new_status, new_date, reason)
       VALUES (?, ?, ?, 'completed', 'completed', ?, ?)
     `).run(randomUUID(), taskId || null, userId, date, `Irrigation event recorded (${method}, ${durationMinutes} mins)`)
@@ -589,7 +617,7 @@ export function recordIrrigation(req, res, next) {
 }
 
 // 17. Record Fertilizer Application
-export function recordFertilizer(req, res, next) {
+export async function recordFertilizer(req, res, next) {
   try {
     const userId = req.user.id
     const { taskId, cropCycleId, fertilizerName, quantity, unit = 'kg', method = 'Side placement', notes = '', date = dateToday() } = req.body
@@ -599,17 +627,17 @@ export function recordFertilizer(req, res, next) {
     }
 
     if (taskId) {
-      database.prepare(`
+      await database.prepare(`
         UPDATE calendar_tasks
         SET status = 'completed',
             completed_date = ?,
             notes = ?,
-            updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND user_id = ?
       `).run(date, `Applied ${quantity} ${unit} of ${fertilizerName} via ${method}. ${notes}`, taskId, userId)
     }
 
-    database.prepare(`
+    await database.prepare(`
       INSERT INTO task_history (id, task_id, user_id, action, new_status, new_date, reason)
       VALUES (?, ?, ?, 'completed', 'completed', ?, ?)
     `).run(randomUUID(), taskId || null, userId, date, `Applied ${quantity} ${unit} of ${fertilizerName}`)
@@ -621,7 +649,7 @@ export function recordFertilizer(req, res, next) {
 }
 
 // 18. Record Farm Expense
-export function recordFarmExpense(req, res, next) {
+export async function recordFarmExpense(req, res, next) {
   try {
     const userId = req.user.id
     const { cropCycleId, category, cropName = '', amount, date = dateToday(), notes = '' } = req.body
@@ -631,12 +659,12 @@ export function recordFarmExpense(req, res, next) {
     }
 
     const expenseId = randomUUID()
-    database.prepare(`
+    await database.prepare(`
       INSERT INTO farm_expenses (id, user_id, crop_cycle_id, category, crop_name, amount, date, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(expenseId, userId, cropCycleId || null, category, cropName, Number(amount), date, notes)
 
-    const created = database.prepare('SELECT * FROM farm_expenses WHERE id = ?').get(expenseId)
+    const created = await database.prepare('SELECT * FROM farm_expenses WHERE id = ?').get(expenseId)
     return res.status(201).json({ success: true, expense: created })
   } catch (error) {
     return next(error)
@@ -644,7 +672,7 @@ export function recordFarmExpense(req, res, next) {
 }
 
 // 19. Get Farm Expenses
-export function getFarmExpenses(req, res, next) {
+export async function getFarmExpenses(req, res, next) {
   try {
     const userId = req.user.id
     const { cropCycleId } = req.query
@@ -657,7 +685,7 @@ export function getFarmExpenses(req, res, next) {
     }
     sql += ' ORDER BY date DESC'
 
-    const expenses = database.prepare(sql).all(...params)
+    const expenses = await database.prepare(sql).all(...params)
     const totalAmount = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
     const categories = ['Seeds', 'Fertilizers', 'Pesticides', 'Labor', 'Irrigation', 'Equipment', 'Transportation', 'Machinery rental', 'Other']
@@ -673,10 +701,10 @@ export function getFarmExpenses(req, res, next) {
 }
 
 // 20. Get Task History Audit Log
-export function getTaskHistory(req, res, next) {
+export async function getTaskHistory(req, res, next) {
   try {
     const userId = req.user.id
-    const history = database.prepare(`
+    const history = await database.prepare(`
       SELECT h.*, t.title as task_title, t.activity_type, t.crop_name
       FROM task_history h
       LEFT JOIN calendar_tasks t ON t.id = h.task_id
@@ -697,19 +725,19 @@ export async function getDailySummary(req, res, next) {
     const userId = req.user.id
     const today = dateToday()
 
-    const todayTasks = database.prepare(`
+    const todayTasks = await database.prepare(`
       SELECT * FROM calendar_tasks
       WHERE user_id = ? AND scheduled_date = ?
       ORDER BY priority DESC
     `).all(userId, today)
 
-    const overdueTasks = database.prepare(`
+    const overdueTasks = await database.prepare(`
       SELECT * FROM calendar_tasks
       WHERE user_id = ? AND scheduled_date < ? AND status = 'pending'
       ORDER BY scheduled_date ASC
     `).all(userId, today)
 
-    const activeCycles = database.prepare(`
+    const activeCycles = await database.prepare(`
       SELECT * FROM crop_cycles WHERE user_id = ? AND status = 'active'
     `).all(userId)
 

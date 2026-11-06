@@ -1,5 +1,3 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import multer from 'multer'
 import { z } from 'zod'
@@ -7,9 +5,9 @@ import { aiServiceUnavailableMessage } from './aiServiceErrors.js'
 import { config } from './config.js'
 import { database } from './db.js'
 import { getPlantKnowledge } from './cropKnowledge.js'
+import { deleteStoredImage, savePersistentImage, serveStoredImage } from './storage.js'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-const imageDirectory = path.join(path.dirname(config.DATABASE_FILE), 'crop-diagnoses')
 const allowedTypes = new Map([
   ['image/jpeg', { extension: 'jpg', matches: (buffer) => buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff }],
   ['image/png', { extension: 'png', matches: (buffer) => buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) }],
@@ -27,8 +25,6 @@ const supportedCropsSchema = z.object({
     diseases: z.array(z.string()),
   })),
 })
-
-fs.mkdirSync(imageDirectory, { recursive: true })
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -229,45 +225,43 @@ export async function diagnoseCrop(req, res, next) {
       return res.json({ diagnosis: { ...result, createdAt: new Date().toISOString() } })
     }
     const id = randomUUID()
-    savedFilename = `${id}.${input.extension}`
-    await fs.promises.writeFile(path.join(imageDirectory, savedFilename), req.file.buffer, { flag: 'wx', mode: 0o600 })
-    database.prepare(`
+    const stored = await savePersistentImage({
+      folder: 'crop-diagnoses',
+      buffer: req.file.buffer,
+      mimeType: input.mimeType,
+      extension: input.extension,
+    })
+    savedFilename = stored.identifier
+    await database.prepare(`
       INSERT INTO crop_diagnoses
         (id, user_id, crop_name, disease_name, image_filename, image_mime_type, confidence, severity, result_json)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, req.user.id, result.plantName, result.diseaseName, savedFilename, input.mimeType, result.confidence, result.severity, JSON.stringify(result))
-    const row = database.prepare('SELECT * FROM crop_diagnoses WHERE id = ? AND user_id = ?').get(id, req.user.id)
+    const row = await database.prepare('SELECT * FROM crop_diagnoses WHERE id = ? AND user_id = ?').get(id, req.user.id)
     return res.status(201).json({ diagnosis: formatDiagnosis(row) })
   } catch (error) {
     if (savedFilename) {
-      try {
-        await fs.promises.unlink(path.join(imageDirectory, savedFilename))
-      } catch (cleanupError) {
-        if (cleanupError.code !== 'ENOENT') console.error('Could not remove an unreferenced crop image.', cleanupError)
-      }
+      await deleteStoredImage(savedFilename, 'crop-diagnoses')
     }
     if (error.status) return res.status(error.status).json({ error: error.message, ...(error.details ? { details: error.details } : {}) })
     return next(error)
   }
 }
 
-export function diagnosisHistory(req, res, next) {
+export async function diagnosisHistory(req, res, next) {
   try {
-    const rows = database.prepare('SELECT * FROM crop_diagnoses WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').all(req.user.id)
+    const rows = await database.prepare('SELECT * FROM crop_diagnoses WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').all(req.user.id)
     return res.json({ diagnoses: rows.map(formatDiagnosis) })
   } catch (error) {
     return next(error)
   }
 }
 
-export function diagnosisImage(req, res, next) {
+export async function diagnosisImage(req, res, next) {
   try {
-    const row = database.prepare('SELECT image_filename, image_mime_type FROM crop_diagnoses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+    const row = await database.prepare('SELECT image_filename, image_mime_type FROM crop_diagnoses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
     if (!row) return res.status(404).json({ error: 'Diagnosis image not found.' })
-    const imagePath = path.join(imageDirectory, path.basename(row.image_filename))
-    return res.type(row.image_mime_type).set('Cache-Control', 'private, no-store').sendFile(imagePath, (error) => {
-      if (error && !res.headersSent) return next(error)
-    })
+    return await serveStoredImage(res, row.image_filename, row.image_mime_type, 'crop-diagnoses')
   } catch (error) {
     return next(error)
   }
@@ -275,14 +269,10 @@ export function diagnosisImage(req, res, next) {
 
 export async function deleteDiagnosis(req, res, next) {
   try {
-    const row = database.prepare('SELECT image_filename FROM crop_diagnoses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+    const row = await database.prepare('SELECT image_filename FROM crop_diagnoses WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
     if (!row) return res.status(404).json({ error: 'Diagnosis not found.' })
-    database.prepare('DELETE FROM crop_diagnoses WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id)
-    try {
-      await fs.promises.unlink(path.join(imageDirectory, path.basename(row.image_filename)))
-    } catch (error) {
-      if (error.code !== 'ENOENT') return next(error)
-    }
+    await database.prepare('DELETE FROM crop_diagnoses WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id)
+    await deleteStoredImage(row.image_filename, 'crop-diagnoses')
     return res.status(204).end()
   } catch (error) {
     return next(error)

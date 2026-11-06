@@ -3,7 +3,7 @@ import { fetchFarmWeather } from './weatherAdvisory.js'
 
 /**
  * Builds a comprehensive, verified context dictionary for the authenticated farmer.
- * Integrates real records from SQLite (soil_analyses, crop_diagnoses, crop_cycles,
+ * Integrates real records from database (soil_analyses, crop_diagnoses, crop_cycles,
  * calendar_tasks, farm_expenses) plus live Open-Meteo weather.
  */
 export async function buildFarmerGroundingContext(userId, clientContext = {}, { includeWeather = true } = {}) {
@@ -19,7 +19,7 @@ export async function buildFarmerGroundingContext(userId, clientContext = {}, { 
   let userRecord = null
   if (userId) {
     try {
-      userRecord = database.prepare('SELECT id, name, email FROM users WHERE id = ?').get(userId)
+      userRecord = await database.prepare('SELECT id, name, email FROM users WHERE id = ?').get(userId)
     } catch {}
   }
 
@@ -27,7 +27,7 @@ export async function buildFarmerGroundingContext(userId, clientContext = {}, { 
   let recentSoilAnalyses = []
   if (userId) {
     try {
-      const rows = database.prepare(`
+      const rows = await database.prepare(`
         SELECT id, crop_name, location, predicted_class, confidence, model_version, result_json, created_at
         FROM soil_analyses
         WHERE user_id = ?
@@ -59,7 +59,7 @@ export async function buildFarmerGroundingContext(userId, clientContext = {}, { 
   let recentCropDiagnoses = []
   if (userId) {
     try {
-      const rows = database.prepare(`
+      const rows = await database.prepare(`
         SELECT id, crop_name, disease_name, confidence, severity, result_json, created_at
         FROM crop_diagnoses
         WHERE user_id = ?
@@ -93,7 +93,7 @@ export async function buildFarmerGroundingContext(userId, clientContext = {}, { 
   let activeCropCycles = []
   if (userId) {
     try {
-      activeCropCycles = database.prepare(`
+      activeCropCycles = await database.prepare(`
         SELECT id, crop_name, crop_variety, field_name, farm_area, sowing_date,
                crop_duration_days, expected_harvest_date, soil_type, irrigation_type,
                water_availability, current_stage_index, health_status
@@ -114,14 +114,16 @@ export async function buildFarmerGroundingContext(userId, clientContext = {}, { 
   if (userId) {
     try {
       const today = new Date().toISOString().slice(0, 10)
-      todayTasks = database.prepare(`
+      const next7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+      todayTasks = await database.prepare(`
         SELECT id, crop_name, title, activity_type, stage_name, scheduled_date, priority, description, fertilizer_details, irrigation_details
         FROM calendar_tasks
         WHERE user_id = ? AND scheduled_date = ? AND status = 'pending'
         LIMIT 8
       `).all(userId, today)
 
-      overdueTasks = database.prepare(`
+      overdueTasks = await database.prepare(`
         SELECT id, crop_name, title, activity_type, stage_name, scheduled_date, priority
         FROM calendar_tasks
         WHERE user_id = ? AND scheduled_date < ? AND status = 'pending'
@@ -129,13 +131,13 @@ export async function buildFarmerGroundingContext(userId, clientContext = {}, { 
         LIMIT 5
       `).all(userId, today)
 
-      upcomingTasks = database.prepare(`
+      upcomingTasks = await database.prepare(`
         SELECT id, crop_name, title, activity_type, stage_name, scheduled_date, priority
         FROM calendar_tasks
-        WHERE user_id = ? AND scheduled_date > ? AND scheduled_date <= date(?, '+7 days') AND status = 'pending'
+        WHERE user_id = ? AND scheduled_date > ? AND scheduled_date <= ? AND status = 'pending'
         ORDER BY scheduled_date ASC
         LIMIT 8
-      `).all(userId, today, today)
+      `).all(userId, today, next7Days)
     } catch (e) {
       console.warn('Could not read calendar tasks for context:', e.message)
     }
@@ -172,7 +174,7 @@ export async function buildFarmerGroundingContext(userId, clientContext = {}, { 
   let recentExpenses = []
   if (userId) {
     try {
-      recentExpenses = database.prepare(`
+      recentExpenses = await database.prepare(`
         SELECT category, crop_name, amount, date, notes
         FROM farm_expenses
         WHERE user_id = ?
@@ -188,29 +190,38 @@ export async function buildFarmerGroundingContext(userId, clientContext = {}, { 
     farmer: {
       name: userRecord?.name || profileInfo.name || 'Farmer',
       email: userRecord?.email || profileInfo.email || null,
-      farmLocation: location,
-      landSize: profileInfo.landSize ? `${profileInfo.landSize} ${profileInfo.landUnit || 'acres'}` : 'Not recorded',
-      soilType: profileInfo.soil || (recentSoilAnalyses[0]?.predictedSoilClass) || 'Not recorded',
-      waterSource: profileInfo.water || 'Not specified',
-      irrigationMethod: profileInfo.irrigation || 'Not specified',
-      budget: profileInfo.budget ? `₹${profileInfo.budget}` : 'Not specified',
+      district: location,
+      soilType: recentSoilAnalyses[0]?.predictedSoilClass || profileInfo.soilType || 'Not yet analyzed',
+      landArea: profileInfo.landArea || '1 acre',
     },
-    soilAnalyzer: {
-      hasRecords: recentSoilAnalyses.length > 0,
-      latestReports: recentSoilAnalyses.length > 0 ? recentSoilAnalyses : 'No soil test image has been analyzed yet for this farmer.',
-    },
-    plantAnalyzer: {
-      hasRecords: recentCropDiagnoses.length > 0,
-      latestDiagnoses: recentCropDiagnoses.length > 0 ? recentCropDiagnoses : 'No plant health photos have been diagnosed yet for this farmer.',
-    },
-    activeCrops: activeCropCycles.length > 0 ? activeCropCycles : (clientContext.crops || 'No active crop cycles currently registered.'),
+    location,
+    liveWeather,
+    recentSoilAnalyses,
+    recentCropDiagnoses,
+    activeCrops: activeCropCycles.map((c) => ({
+      crop: c.crop_name,
+      variety: c.crop_variety,
+      fieldName: c.field_name,
+      areaAcres: c.farm_area,
+      sownOn: c.sowing_date,
+      expectedHarvest: c.expected_harvest_date,
+      currentStageIndex: c.current_stage_index,
+      health: c.health_status,
+      irrigation: c.irrigation_type,
+    })),
     farmCalendar: {
-      todayActivities: todayTasks.length > 0 ? todayTasks : 'No pending activities scheduled for today.',
-      overdueActivities: overdueTasks.length > 0 ? overdueTasks : 'No overdue activities.',
-      upcoming7Days: upcomingTasks.length > 0 ? upcomingTasks : 'No activities scheduled for next 7 days.',
+      todayActivities: todayTasks,
+      overdueActivities: overdueTasks,
+      upcomingWeekActivities: upcomingTasks,
     },
-    weather: liveWeather,
-    recentExpenses: recentExpenses.length > 0 ? recentExpenses : 'No expenses recorded yet.',
+    financialSnapshot: {
+      recentExpenses: recentExpenses.map((ex) => ({
+        category: ex.category,
+        crop: ex.crop_name,
+        amountInr: ex.amount,
+        date: ex.date,
+        note: ex.notes,
+      })),
+    },
   }
 }
-

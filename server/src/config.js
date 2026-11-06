@@ -10,10 +10,13 @@ dotenv.config({ path: path.join(serverDirectory, '.env') })
 const environmentSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(5000),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  CLIENT_URL: z.string().url().default('http://localhost:5173'),
+  CLIENT_URL: z.string().default('http://localhost:5173'),
   JWT_SECRET: z.string().optional(),
   JWT_EXPIRES_IN: z.string().regex(/^\d+(s|m|h|d|w|y)$/, 'Use a duration such as 30m, 12h or 7d.').default('7d'),
   DATABASE_PATH: z.string().default(process.env.VERCEL ? '/tmp/farm-saathi.sqlite' : './data/farm-saathi.sqlite'),
+  DATABASE_URL: z.string().optional(),
+  POSTGRES_URL: z.string().optional(),
+  BLOB_READ_WRITE_TOKEN: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.8-flash'),
   AI_SERVICE_URL: z.string().default('http://127.0.0.1:8000'),
@@ -47,4 +50,5 @@ export const config = Object.freeze({
   SERVER_DIRECTORY: serverDirectory,
   DATABASE_FILE: path.resolve(serverDirectory, env.DATABASE_PATH),
   GEMINI_API_KEY: env.GEMINI_API_KEY?.trim() || '',
+  POSTGRES_CONNECTION_STRING: env.POSTGRES_URL || env.DATABASE_URL || '',
 })
