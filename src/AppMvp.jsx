@@ -181,8 +181,8 @@ async function imageToDataUrl(file) {
   return result
 }
 
-function Card({ children, className = '' }) {
-  return <section className={`m-card ${className}`}>{children}</section>
+function Card({ children, className = '', style, ...props }) {
+  return <section className={`m-card ${className}`} style={style} {...props}>{children}</section>
 }
 
 function Heading({ eyebrow, title, detail, action }) {
@@ -372,26 +372,69 @@ function Dashboard() {
       <Card className="m-stat"><span className="m-stat-icon">✚</span><span>AI health score</span><b className="m-stat-unavailable">Not assessed</b><small className="m-stat-foot">No verified crop-health score</small></Card>
     </div>
     <div className="m-dashboard-columns m-dashboard-primary">
-      <Card className="m-dashboard-health"><div className="m-section-title"><div><span className="m-eyebrow">Field monitoring</span><h2>Field health overview</h2></div><NavLink to="/crop-doctor">Open Crop Doctor ↗</NavLink></div>
-        <div className="m-health-empty"><div className="m-health-ring"><span>—</span></div><div><b>Health checks need field observations</b><p>No verified AI crop diagnosis or measured field-health data is available yet. Check a plant photo or record what you observe.</p><NavLink className="m-button primary" to="/crop-doctor">Check a crop photo</NavLink></div></div>
+      <Card className="m-dashboard-health m-card-with-bg">
+        <div className="m-card-media-bg">
+          <video autoPlay loop muted playsInline poster="/media/field-health-photo.jpg" className="m-card-video">
+            <source src="/media/field-health-video.mp4" type="video/mp4" />
+          </video>
+          <div className="m-card-overlay" />
+        </div>
+        <div className="m-card-content">
+          <div className="m-section-title"><div><span className="m-eyebrow">Field monitoring</span><h2>Field health overview</h2></div><NavLink to="/crop-doctor">Open Crop Doctor ↗</NavLink></div>
+          <div className="m-health-empty"><div className="m-health-ring"><span>—</span></div><div><b>Health checks need field observations</b><p>No verified AI crop diagnosis or measured field-health data is available yet. Check a plant photo or record what you observe.</p><NavLink className="m-button primary" to="/crop-doctor">Check a crop photo</NavLink></div></div>
+        </div>
       </Card>
       <WeatherPeek location={profile.village || profile.district || 'Mandya'} onOpen={() => navigate('/weather')} />
     </div>
     <div className="m-dashboard-columns m-dashboard-secondary">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm profile</span><h2>Soil health summary</h2></div><NavLink to="/smart-water">Soil Vision →</NavLink></div><div className="m-soil-summary"><span className="m-soil-icon">♧</span><div><b>{profile.soil || 'Soil type not recorded'}</b><small>Farmer-entered profile · not a laboratory measurement</small></div></div><div className="m-soil-summary-grid"><div><small>Water availability</small><b>{profile.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{profile.irrigation || 'Not recorded'}</b></div></div><NavLink className="m-button light" to="/smart-water">Open soil tools</NavLink></Card>
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">On your land</span><h2>Crop distribution</h2></div><NavLink to="/crop-growth">Manage crops →</NavLink></div>
-        {cropSegments.length ? <div className="m-crop-distribution"><div className="m-crop-donut" style={{ background: distributionBackground }}><span>{cropArea.toLocaleString()}<small>acres</small></span></div><div className="m-crop-legend">{cropSegments.slice(0, 5).map((crop) => <div key={crop.id}><i style={{ background: crop.color }} /><span>{crop.name}</span><b>{Number(crop.area || 0).toLocaleString()} ac</b></div>)}</div></div> : <EmptyState title="No crop area recorded" detail="Add crop and field area records to see their distribution." action={<Button variant="light" onClick={() => navigate('/crop-growth')}>Add crop</Button>} />}
+      <Card className="m-card-with-bg">
+        <div className="m-card-media-bg">
+          <img src="/media/soil-health-photo.jpg" alt="Soil health" className="m-card-photo" />
+          <div className="m-card-overlay" />
+        </div>
+        <div className="m-card-content">
+          <div className="m-section-title"><div><span className="m-eyebrow">Farm profile</span><h2>Soil health summary</h2></div><NavLink to="/smart-water">Soil Vision →</NavLink></div>
+          <div className="m-soil-summary"><span className="m-soil-icon">♧</span><div><b>{profile.soil || 'Soil type not recorded'}</b><small>Farmer-entered profile · not a laboratory measurement</small></div></div>
+          <div className="m-soil-summary-grid"><div><small>Water availability</small><b>{profile.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{profile.irrigation || 'Not recorded'}</b></div></div>
+          <NavLink className="m-button light" to="/smart-water">Open soil tools</NavLink>
+        </div>
+      </Card>
+      <Card className="m-card-with-bg">
+        <div className="m-card-media-bg">
+          <img src="/media/crop-distribution-photo.jpg" alt="Crop distribution" className="m-card-photo" />
+          <div className="m-card-overlay" />
+        </div>
+        <div className="m-card-content">
+          <div className="m-section-title"><div><span className="m-eyebrow">On your land</span><h2>Crop distribution</h2></div><NavLink to="/crop-growth">Manage crops →</NavLink></div>
+          {cropSegments.length ? <div className="m-crop-distribution"><div className="m-crop-donut" style={{ background: distributionBackground }}><span>{cropArea.toLocaleString()}<small>acres</small></span></div><div className="m-crop-legend">{cropSegments.slice(0, 5).map((crop) => <div key={crop.id}><i style={{ background: crop.color }} /><span>{crop.name}</span><b>{Number(crop.area || 0).toLocaleString()} ac</b></div>)}</div></div> : <EmptyState title="No crop area recorded" detail="Add crop and field area records to see their distribution." action={<Button variant="light" onClick={() => navigate('/crop-growth')}>Add crop</Button>} />}
+        </div>
       </Card>
     </div>
     <div className="m-dashboard-columns">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Field observations</span><h2>Soil moisture trend</h2></div><NavLink to="/smart-water">Water & soil →</NavLink></div><div className="m-chart-unavailable"><span>⌁</span><div><b>No sensor readings recorded</b><p>Connect or record actual soil-moisture readings to show a trend. This dashboard does not estimate moisture from photos.</p></div></div></Card>
+      <Card className="m-card-with-bg">
+        <div className="m-card-media-bg">
+          <img src="/media/soil-moisture-photo.jpg" alt="Soil moisture trend" className="m-card-photo" />
+          <div className="m-card-overlay" />
+        </div>
+        <div className="m-card-content">
+          <div className="m-section-title"><div><span className="m-eyebrow">Field observations</span><h2>Soil moisture trend</h2></div><NavLink to="/smart-water">Water & soil →</NavLink></div>
+          <div className="m-chart-unavailable"><span>⌁</span><div><b>No sensor readings recorded</b><p>Connect or record actual soil-moisture readings to show a trend. This dashboard does not estimate moisture from photos.</p></div></div>
+        </div>
+      </Card>
       <Card><div className="m-section-title"><div><span className="m-eyebrow">Your next steps</span><h2>Upcoming farming tasks</h2></div><NavLink to="/calendar">View calendar →</NavLink></div>
         {pending.length ? <ul className="m-task-list">{pending.map((task) => <li key={task.id}><span className="m-task-dot"></span><span><b>{task.title}</b><small>{task.date === dateToday() ? 'Today' : task.date}{task.crop ? ` · ${task.crop}` : ''}</small></span></li>)}</ul> : <EmptyState title="No upcoming activities" detail="Keep track of field work by adding tasks to your calendar." action={<Button variant="light" onClick={() => navigate('/calendar')}>Add activity</Button>} />}
       </Card>
     </div>
     <div className="m-dashboard-columns">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">On your land</span><h2>My crops</h2></div><NavLink to="/crop-growth">Manage crops →</NavLink></div>
-        {crops.length ? <div className="m-crop-list">{crops.slice(0, 4).map((crop) => <div key={crop.id}><CropSummary crop={crop} /><div className="m-dashboard-crop-progress"><div className="m-progress"><span style={{ width: `${crop.stageIndex < 0 ? 0 : percent(crop.stageIndex + 1, stages.length)}%` }} /></div><small>{crop.stageIndex < 0 ? 'Growth stage not recorded' : `${percent(crop.stageIndex + 1, stages.length)}% of recorded lifecycle`} · {crop.health || 'Health not assessed'}</small></div></div>)}</div> : <EmptyState title="No crops registered yet" detail="Add a crop with its sowing date to start tracking real progress." action={<Button onClick={() => navigate('/crop-growth')}>Register a crop</Button>} />}
+      <Card className="m-card-with-bg">
+        <div className="m-card-media-bg">
+          <img src="/media/my-crops-photo.jpg" alt="My crops" className="m-card-photo" />
+          <div className="m-card-overlay" />
+        </div>
+        <div className="m-card-content">
+          <div className="m-section-title"><div><span className="m-eyebrow">On your land</span><h2>My crops</h2></div><NavLink to="/crop-growth">Manage crops →</NavLink></div>
+          {crops.length ? <div className="m-crop-list">{crops.slice(0, 4).map((crop) => <div key={crop.id}><CropSummary crop={crop} /><div className="m-dashboard-crop-progress"><div className="m-progress"><span style={{ width: `${crop.stageIndex < 0 ? 0 : percent(crop.stageIndex + 1, stages.length)}%` }} /></div><small>{crop.stageIndex < 0 ? 'Growth stage not recorded' : `${percent(crop.stageIndex + 1, stages.length)}% of recorded lifecycle`} · {crop.health || 'Health not assessed'}</small></div></div>)}</div> : <EmptyState title="No crops registered yet" detail="Add a crop with its sowing date to start tracking real progress." action={<Button onClick={() => navigate('/crop-growth')}>Register a crop</Button>} />}
+        </div>
       </Card>
       <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm activity</span><h2>Recent field notes</h2></div><NavLink to="/crop-growth">Crop records →</NavLink></div>
         {observations.length ? <div className="m-recent-activity">{observations.slice(0, 4).map((item) => <div key={item.id}><span className="m-activity-marker">•</span><p><b>{crops.find((crop) => crop.id === item.cropId)?.name || 'Farm note'}</b><span>{item.text}</span><small>{item.date}</small></p></div>)}</div> : <EmptyState title="No field notes yet" detail="Observations you add to crop records will appear here." action={<Button variant="light" onClick={() => navigate('/crop-growth')}>Add observation</Button>} />}
@@ -448,8 +491,17 @@ function WeatherPeek({ location, onOpen }) {
     Promise.resolve().then(() => loadWeather(controller.signal, false))
     return () => controller.abort()
   }, [loadWeather])
-  return <Card><div className="m-section-title"><div><span className="m-eyebrow">Area forecast</span><h2>Weather snapshot</h2></div><button className="m-plain-action" type="button" onClick={onOpen}>7-day →</button></div>
-    {weather ? <div className="m-dashboard-weather"><div><span className="m-weather-symbol">{weatherDescription(weather.weather_code)[1]}</span><b>{Math.round(weather.temperature_2m)}°C</b><small>{weatherDescription(weather.weather_code)[0]} · {weather.place.name}</small></div><div><span>Humidity</span><b>{weather.relative_humidity_2m}%</b></div><div><span>Rain chance today</span><b>{weather.rainChance ?? '—'}%</b></div><div><span>Wind</span><b>{weather.wind_speed_10m} km/h</b></div><small className="m-live-label">LIVE FORECAST · OPEN-METEO</small></div> : <div className="m-weather-empty"><span>☼</span><p><b>{status === 'loading' ? 'Checking current forecast…' : 'Live weather is not loaded'}</b><small>{error || `Fetch current conditions for ${location}. No sample weather is shown.`}</small></p><Button variant="light" onClick={() => loadWeather()} disabled={status === 'loading'}>{status === 'loading' ? 'Loading…' : 'Try again'}</Button></div>}
+  return <Card className="m-card-with-bg">
+    <div className="m-card-media-bg">
+      <video autoPlay loop muted playsInline poster="/media/weather-photo.jpg" className="m-card-video">
+        <source src="/media/weather-video.mp4" type="video/mp4" />
+      </video>
+      <div className="m-card-overlay" />
+    </div>
+    <div className="m-card-content">
+      <div className="m-section-title"><div><span className="m-eyebrow">Area forecast</span><h2>Weather snapshot</h2></div><button className="m-plain-action" type="button" onClick={onOpen}>7-day →</button></div>
+      {weather ? <div className="m-dashboard-weather"><div><span className="m-weather-symbol">{weatherDescription(weather.weather_code)[1]}</span><b>{Math.round(weather.temperature_2m)}°C</b><small>{weatherDescription(weather.weather_code)[0]} · {weather.place.name}</small></div><div><span>Humidity</span><b>{weather.relative_humidity_2m}%</b></div><div><span>Rain chance today</span><b>{weather.rainChance ?? '—'}%</b></div><div><span>Wind</span><b>{weather.wind_speed_10m} km/h</b></div><small className="m-live-label">LIVE FORECAST · OPEN-METEO</small></div> : <div className="m-weather-empty"><span>☼</span><p><b>{status === 'loading' ? 'Checking current forecast…' : 'Live weather is not loaded'}</b><small>{error || `Fetch current conditions for ${location}. No sample weather is shown.`}</small></p><Button variant="light" onClick={() => loadWeather()} disabled={status === 'loading'}>{status === 'loading' ? 'Loading…' : 'Try again'}</Button></div>}
+    </div>
   </Card>
 }
 
