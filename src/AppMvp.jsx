@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import './AppMvp.css'
 import { FarmProvider, useFarm } from './FarmContext.jsx'
 import { SUPPORTED_LANGUAGES, t } from './translations.js'
-import { AuthPage } from './pages/AuthPage.jsx'
-import { FarmCalendarPage } from './pages/FarmCalendarPage.jsx'
-import { AiAssistantPage } from './pages/AiAssistantPage.jsx'
+
+const AuthPage = lazy(() => import('./pages/AuthPage.jsx').then((m) => ({ default: m.AuthPage })))
+const FarmCalendarPage = lazy(() => import('./pages/FarmCalendarPage.jsx').then((m) => ({ default: m.FarmCalendarPage })))
+const AiAssistantPage = lazy(() => import('./pages/AiAssistantPage.jsx').then((m) => ({ default: m.AiAssistantPage })))
 
 export { useFarm, FarmProvider } from './FarmContext.jsx'
 const navItems = [
@@ -105,7 +106,11 @@ function Layout() {
 
   // If unauthenticated or explicitly on register/login, render dedicated AuthPage at beginning
   if (!token || isAuthRoute) {
-    return <AuthPage initialMode={location.pathname === '/login' ? 'login' : 'register'} />
+    return (
+      <Suspense fallback={<div className="m-loading-state" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Farm Saathi…</div>}>
+        <AuthPage initialMode={location.pathname === '/login' ? 'login' : 'register'} />
+      </Suspense>
+    )
   }
 
   const loc = profile?.village || profile?.district || 'Add your location'
@@ -145,29 +150,33 @@ function Layout() {
         </div>
       </header>
       {storageError && <div className="m-storage-error" role="alert">{storageError}</div>}
-      <div className={`m-content ${isAssistant ? 'm-content-fullbleed' : ''}`}><Routes>
-        <Route path="/register" element={<AuthPage initialMode="register" />} />
-        <Route path="/login" element={<AuthPage initialMode="login" />} />
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/my-farm" element={<MyFarmPage />} />
-        <Route path="/crop-analyzer" element={<CropPlanner />} />
-        <Route path="/crop-growth" element={<CropGrowthPage />} />
-        <Route path="/crop-doctor" element={<DiseasePage />} />
-        <Route path="/smart-water" element={<SoilWaterPage />} />
-        <Route path="/weather" element={<WeatherPage />} />
-        <Route path="/calendar" element={<FarmCalendarPage />} />
-        <Route path="/market-price" element={<MarketPage />} />
-        <Route path="/expenses" element={<ExpensesPage />} />
-        <Route path="/budget" element={<BudgetPage />} />
-        <Route path="/government-schemes" element={<SchemesPage />} />
-        <Route path="/loans" element={<LoansPage />} />
-        <Route path="/insurance" element={<InsurancePage />} />
-        <Route path="/ai-assistant" element={<AiAssistantPage />} />
-        <Route path="/voice-assistant" element={<AiAssistantPage voiceFirst />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes></div>
+      <div className={`m-content ${isAssistant ? 'm-content-fullbleed' : ''}`}>
+        <Suspense fallback={<div className="m-loading-state" style={{ padding: '2rem', textAlign: 'center' }}>Loading…</div>}>
+          <Routes>
+            <Route path="/register" element={<AuthPage initialMode="register" />} />
+            <Route path="/login" element={<AuthPage initialMode="login" />} />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/my-farm" element={<MyFarmPage />} />
+            <Route path="/crop-analyzer" element={<CropPlanner />} />
+            <Route path="/crop-growth" element={<CropGrowthPage />} />
+            <Route path="/crop-doctor" element={<DiseasePage />} />
+            <Route path="/smart-water" element={<SoilWaterPage />} />
+            <Route path="/weather" element={<WeatherPage />} />
+            <Route path="/calendar" element={<FarmCalendarPage />} />
+            <Route path="/market-price" element={<MarketPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
+            <Route path="/budget" element={<BudgetPage />} />
+            <Route path="/government-schemes" element={<SchemesPage />} />
+            <Route path="/loans" element={<LoansPage />} />
+            <Route path="/insurance" element={<InsurancePage />} />
+            <Route path="/ai-assistant" element={<AiAssistantPage />} />
+            <Route path="/voice-assistant" element={<AiAssistantPage voiceFirst />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </div>
       {!isAssistant && <nav className="m-bottom-nav">{[['/', 'Home', '⌂'], ['/crop-growth', 'Crops', '↗'], ['/crop-doctor', 'Doctor', '✚'], ['/weather', 'Weather', '☼'], ['/profile', 'Profile', '○']].map(([path, label, icon]) => <NavLink to={path} end={path === '/'} key={path}><span>{icon}</span><small>{label}</small></NavLink>)}</nav>}
     </main>
     <FloatingAssistant />

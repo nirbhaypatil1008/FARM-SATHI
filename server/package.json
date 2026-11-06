@@ -22,5 +22,10 @@
     "multer": "^2.5.0",
     "pg": "^8.23.1",
     "zod": "^4.1.12"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "@google/genai": false,
+    "protobufjs": false
   }
 }
