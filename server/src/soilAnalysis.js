@@ -82,7 +82,7 @@ export function receiveSoilImage(req, res, next) {
 
 export async function soilModelStatus(_req, res) {
   try {
-    const response = await fetch(`${config.AI_SERVICE_URL.replace(/\/+$/, '')}/api/soil/status`, {
+    const response = await fetch(new URL(`${(process.env.AI_SERVICE_URL || config.AI_SERVICE_URL).replace(/\/+$/, '')}/api/soil/status`).toString(), {
       signal: AbortSignal.timeout(5000),
     })
     const body = await response.json().catch(() => ({}))
@@ -142,7 +142,7 @@ export async function analyzeSoil(req, res, next) {
     form.set('file', new Blob([req.file.buffer], { type: input.mimeType }), `soil.${input.extension}`)
     let response
     try {
-      response = await fetch(`${config.AI_SERVICE_URL.replace(/\/+$/, '')}/api/soil/predict`, {
+      response = await fetch(new URL(`${(process.env.AI_SERVICE_URL || config.AI_SERVICE_URL).replace(/\/+$/, '')}/api/soil/predict`).toString(), {
         method: 'POST',
         body: form,
         signal: AbortSignal.timeout(90_000),

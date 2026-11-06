@@ -1,8 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import './AppMvp.css'
+import { FarmProvider, useFarm } from './FarmContext.jsx'
+import { SUPPORTED_LANGUAGES, t } from './translations.js'
+import { AuthPage } from './pages/AuthPage.jsx'
+import { FarmCalendarPage } from './pages/FarmCalendarPage.jsx'
+import { AiAssistantPage } from './pages/AiAssistantPage.jsx'
 
-const FarmContext = createContext(null)
+export { useFarm, FarmProvider } from './FarmContext.jsx'
 const navItems = [
   ['/', 'Dashboard', '⌂'], ['/my-farm', 'My farm', '⌂'], ['/crop-analyzer', 'Crop planner', '◈'],
   ['/crop-growth', 'Crop growth', '↗'], ['/crop-doctor', 'Crop Doctor', '✚'], ['/smart-water', 'Water & soil', '♧'],
@@ -35,79 +40,6 @@ function relatedLearningTopic(text) {
   }
 }
 
-const t = (text, language) => {
-  if (language !== 'kn') return text
-  const words = {
-    Dashboard: 'ಡ್ಯಾಶ್‌ಬೋರ್ಡ್', 'My farm': 'ನನ್ನ ಹೊಲ', 'Crop planner': 'ಬೆಳೆ ಯೋಜನೆ', 'Crop growth': 'ಬೆಳೆ ಬೆಳವಣಿಗೆ',
-    Weather: 'ಹವಾಮಾನ', 'Farm calendar': 'ಕೃಷಿ ಕ್ಯಾಲೆಂಡರ್', Expenses: 'ವೆಚ್ಚಗಳು', 'My profile': 'ನನ್ನ ಪ್ರೊಫೈಲ್',
-    'Welcome to Farm Saathi': 'ಫಾರ್ಮ್ ಸಾಥಿಗೆ ಸ್ವಾಗತ', 'Save profile': 'ಪ್ರೊಫೈಲ್ ಉಳಿಸಿ',
-    'Add crop': 'ಬೆಳೆ ಸೇರಿಸಿ', 'Add expense': 'ವೆಚ್ಚ ಸೇರಿಸಿ', 'Add activity': 'ಕೆಲಸ ಸೇರಿಸಿ',
-    'Ask the farm assistant': 'ಕೃಷಿ ಸಹಾಯಕರನ್ನು ಕೇಳಿ', 'Live weather': 'ನೈಜ ಹವಾಮಾನ',
-  }
-  return words[text] || text
-}
-
-function useStoredState(key, initialValue) {
-  const [value, setValue] = useState(() => {
-    try {
-      const saved = localStorage.getItem(`farm-saathi:${key}`)
-      if (!saved) return initialValue
-      const parsed = JSON.parse(saved)
-      const legacyDemoMode = localStorage.getItem('farm-saathi:demo-mode') === 'true'
-      if (legacyDemoMode && key === 'profile' && parsed?.district === 'Mandya' && parsed?.village === 'Srirangapatna' && parsed?.landSize === 4.8 && parsed?.soil === 'Loamy' && parsed?.irrigation === 'Drip' && parsed?.budget === 85000) return null
-      if (legacyDemoMode && ['crops', 'expenses', 'tasks'].includes(key) && Array.isArray(parsed)) {
-        return parsed.filter((record) => !String(record.id || '').startsWith('demo-'))
-      }
-      if (legacyDemoMode && key === 'demo-mode') return false
-      return parsed
-    } catch (error) {
-      console.warn(`Could not read saved ${key} data.`, error)
-      return initialValue
-    }
-  })
-  const [error, setError] = useState('')
-  const updateValue = (nextValue) => {
-    setValue(nextValue)
-    setError('')
-  }
-
-  useEffect(() => {
-    const showStorageError = (event) => setError(event.detail)
-    window.addEventListener('farm-saathi-storage-error', showStorageError)
-    return () => window.removeEventListener('farm-saathi-storage-error', showStorageError)
-  }, [])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(`farm-saathi:${key}`, JSON.stringify(value))
-    } catch (storageError) {
-      console.error(`Could not save ${key} data.`, storageError)
-      window.dispatchEvent(new CustomEvent('farm-saathi-storage-error', { detail: 'This browser could not save your latest changes. Check available storage and try again.' }))
-    }
-  }, [key, value])
-
-  return [value, updateValue, error]
-}
-
-function FarmProvider({ children }) {
-  const [profile, setProfile, profileError] = useStoredState('profile', null)
-  const [crops, setCrops, cropsError] = useStoredState('crops', [])
-  const [expenses, setExpenses, expensesError] = useStoredState('expenses', [])
-  const [tasks, setTasks, tasksError] = useStoredState('tasks', [])
-  const [observations, setObservations, observationsError] = useStoredState('observations', [])
-  const [, , demoModeError] = useStoredState('demo-mode', false)
-  const [language, setLanguage] = useStoredState('language', 'en')
-  const [darkMode, setDarkMode] = useStoredState('dark-mode', false)
-  const storageError = [profileError, cropsError, expensesError, tasksError, observationsError, demoModeError].find(Boolean) || ''
-  const value = { profile, setProfile, crops, setCrops, expenses, setExpenses, tasks, setTasks, observations, setObservations, language, setLanguage, darkMode, setDarkMode, storageError }
-  return <FarmContext.Provider value={value}>{children}</FarmContext.Provider>
-}
-
-function useFarm() {
-  const context = useContext(FarmContext)
-  if (!context) throw new Error('Farm data must be used inside FarmProvider.')
-  return context
-}
 
 const sessionNow = Date.now()
 const sessionDate = new Date(sessionNow)
@@ -165,6 +97,9 @@ function Layout() {
   const { profile, language, setLanguage, darkMode, setDarkMode, storageError, token, user, logout } = useFarm()
   const navigate = useNavigate()
   const location = useLocation()
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [search, setSearch] = useState('')
 
   const isAuthRoute = location.pathname === '/register' || location.pathname === '/login'
 
@@ -173,9 +108,6 @@ function Layout() {
     return <AuthPage initialMode={location.pathname === '/login' ? 'login' : 'register'} />
   }
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [search, setSearch] = useState('')
   const loc = profile?.village || profile?.district || 'Add your location'
   const displayName = user?.name || profile?.name || 'Farmer'
   const initials = displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
@@ -189,6 +121,8 @@ function Layout() {
     }
   }
   const closeMenu = () => setMobileMenuOpen(false)
+  const isAssistant = location.pathname === '/ai-assistant' || location.pathname === '/voice-assistant'
+
   return <div className={`m-app ${darkMode ? 'dark' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
     {mobileMenuOpen && <button className="m-sidebar-scrim" type="button" aria-label="Close navigation" onClick={closeMenu} />}
     <aside className="m-sidebar">
@@ -211,7 +145,7 @@ function Layout() {
         </div>
       </header>
       {storageError && <div className="m-storage-error" role="alert">{storageError}</div>}
-      <div className="m-content"><Routes>
+      <div className={`m-content ${isAssistant ? 'm-content-fullbleed' : ''}`}><Routes>
         <Route path="/register" element={<AuthPage initialMode="register" />} />
         <Route path="/login" element={<AuthPage initialMode="login" />} />
         <Route path="/" element={<Dashboard />} />
@@ -222,19 +156,19 @@ function Layout() {
         <Route path="/crop-doctor" element={<DiseasePage />} />
         <Route path="/smart-water" element={<SoilWaterPage />} />
         <Route path="/weather" element={<WeatherPage />} />
-        <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/calendar" element={<FarmCalendarPage />} />
         <Route path="/market-price" element={<MarketPage />} />
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/budget" element={<BudgetPage />} />
         <Route path="/government-schemes" element={<SchemesPage />} />
         <Route path="/loans" element={<LoansPage />} />
         <Route path="/insurance" element={<InsurancePage />} />
-        <Route path="/ai-assistant" element={<AssistantPage />} />
-        <Route path="/voice-assistant" element={<AssistantPage voiceFirst />} />
+        <Route path="/ai-assistant" element={<AiAssistantPage />} />
+        <Route path="/voice-assistant" element={<AiAssistantPage voiceFirst />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes></div>
-      <nav className="m-bottom-nav">{[['/', 'Home', '⌂'], ['/crop-growth', 'Crops', '↗'], ['/crop-doctor', 'Doctor', '✚'], ['/weather', 'Weather', '☼'], ['/profile', 'Profile', '○']].map(([path, label, icon]) => <NavLink to={path} end={path === '/'} key={path}><span>{icon}</span><small>{label}</small></NavLink>)}</nav>
+      {!isAssistant && <nav className="m-bottom-nav">{[['/', 'Home', '⌂'], ['/crop-growth', 'Crops', '↗'], ['/crop-doctor', 'Doctor', '✚'], ['/weather', 'Weather', '☼'], ['/profile', 'Profile', '○']].map(([path, label, icon]) => <NavLink to={path} end={path === '/'} key={path}><span>{icon}</span><small>{label}</small></NavLink>)}</nav>}
     </main>
     <FloatingAssistant />
   </div>
@@ -247,47 +181,74 @@ function App() {
 function FloatingAssistant() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [open, setOpen] = useState(false)
-  const [prompt, setPrompt] = useState('')
-  const assistantPage = location.pathname === '/ai-assistant' || location.pathname === '/voice-assistant'
-  const suggestions = ['Why are my leaves turning yellow?', 'How often should I irrigate?', 'How can I improve soil fertility?']
+  const isAssistant = location.pathname === '/ai-assistant' || location.pathname === '/voice-assistant'
 
-  const openChat = (question = '') => {
-    navigate('/ai-assistant', { state: question ? { assistantPrompt: question } : null })
-    setOpen(false)
-    setPrompt('')
-  }
+  if (isAssistant) return null
 
-  if (assistantPage) return null
-  return <div className="m-floating-assistant">
-    {open && <section className="m-assistant-preview" role="dialog" aria-label="Farm assistant preview">
-      <header><span className="m-assistant-preview-mark" aria-hidden="true">F</span><div><b>FARM-SAATHI Assistant</b><small>Ask a question about your farm</small></div><button type="button" aria-label="Close assistant preview" onClick={() => setOpen(false)}>×</button></header>
-      <div className="m-assistant-preview-welcome"><b>How can I help today?</b><p>I can use your recorded farm details when you open the full chat.</p></div>
-      <div className="m-assistant-preview-suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => openChat(suggestion)}>{suggestion}</button>)}</div>
-      <form onSubmit={(event) => { event.preventDefault(); openChat(prompt.trim()) }}>
-        <label className="sr-only" htmlFor="assistant-preview-prompt">Ask the farm assistant</label>
-        <input id="assistant-preview-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Write your question…" />
-        <button type="submit" disabled={!prompt.trim()} aria-label="Send question">Send</button>
-      </form>
-      <button className="m-assistant-preview-expand" type="button" onClick={() => openChat()}>Open Full Chat <span aria-hidden="true">↗</span></button>
-    </section>}
-    <button className="m-assistant-launcher" type="button" aria-label={open ? 'Close FARM-SAATHI assistant' : 'Ask FARM-SAATHI'} aria-expanded={open} title="Ask FARM-SAATHI" onClick={() => setOpen((value) => !value)}>
-      {open ? <span aria-hidden="true">×</span> : <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M4.5 5.5A3.5 3.5 0 0 1 8 2h8a3.5 3.5 0 0 1 3.5 3.5v7A3.5 3.5 0 0 1 16 16h-4.1l-4.7 4v-4.1A3.5 3.5 0 0 1 4.5 12V5.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M8 7.5h8M8 11h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>}
-    </button>
-  </div>
+  return (
+    <div className="m-floating-assistant">
+      <button
+        className="m-assistant-launcher"
+        type="button"
+        aria-label="Open FARM-SAATHI AI Farmer Assistant"
+        title="Open FARM-SAATHI AI Farmer Assistant"
+        onClick={() => navigate('/ai-assistant')}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+          <path d="M4.5 5.5A3.5 3.5 0 0 1 8 2h8a3.5 3.5 0 0 1 3.5 3.5v7A3.5 3.5 0 0 1 16 16h-4.1l-4.7 4v-4.1A3.5 3.5 0 0 1 4.5 12V5.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+          <path d="M8 7.5h8M8 11h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+function CardVideoAccent({ src, poster }) {
+  const [failed, setFailed] = useState(false)
+  if (failed || !src) return null
+  return (
+    <div className="m-card-video-banner" aria-hidden="true">
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        poster={poster}
+        onError={() => setFailed(true)}
+      >
+        <source src={src} type="video/mp4" />
+      </video>
+      <div className="m-card-video-overlay" />
+    </div>
+  )
 }
 
 function Dashboard() {
-  const { profile, crops, expenses, tasks, observations, language } = useFarm()
+  const { profile, setProfile, user, crops, expenses, tasks, observations, language } = useFarm()
   const navigate = useNavigate()
   const videoRef = useRef(null)
   const [heroVideoFailed, setHeroVideoFailed] = useState(false)
-  const [videoPlaying, setVideoPlaying] = useState(true)
-  const [isMuted, setIsMuted] = useState(true)
-  const [videoProgress, setVideoProgress] = useState(0)
-  const [pixelMode, setPixelMode] = useState('matrix') // 'matrix' | 'dots' | 'scanline' | 'off'
-  const [themeActive, setThemeActive] = useState(true)
   const [reduceMotion, setReduceMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+
+  const defaultProfile = useMemo(() => ({
+    name: user?.name || 'Farmer',
+    village: 'Srirangapatna',
+    district: 'Mandya',
+    state: 'Karnataka',
+    landSize: 3.5,
+    landUnit: 'acres',
+    soil: 'Loamy',
+    water: 'Adequate / Irrigated',
+    irrigation: 'Drip',
+    budget: 60000,
+  }), [user?.name])
+
+  useEffect(() => {
+    if (!profile && user) {
+      setProfile(defaultProfile)
+    }
+  }, [profile, user, setProfile, defaultProfile])
 
   useEffect(() => {
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -296,36 +257,11 @@ function Dashboard() {
     return () => motionPreference.removeEventListener('change', updateMotionPreference)
   }, [])
 
-  const toggleVideoPlay = () => {
-    if (!videoRef.current) return
-    if (videoRef.current.paused) {
-      videoRef.current.play().then(() => setVideoPlaying(true)).catch(() => {})
-    } else {
-      videoRef.current.pause()
-      setVideoPlaying(false)
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.play().catch(() => {})
     }
-  }
-
-  const toggleMute = () => {
-    if (!videoRef.current) return
-    const nextMuted = !videoRef.current.muted
-    videoRef.current.muted = nextMuted
-    setIsMuted(nextMuted)
-  }
-
-  const cyclePixelMode = () => {
-    const modes = ['matrix', 'dots', 'scanline', 'off']
-    setPixelMode((curr) => modes[(modes.indexOf(curr) + 1) % modes.length])
-  }
-
-  const handleTimeUpdate = (event) => {
-    const current = event.currentTarget.currentTime
-    setVideoProgress(current)
-    if (current >= 10.0) {
-      event.currentTarget.currentTime = 0
-      setVideoProgress(0)
-    }
-  }
+  }, [])
 
   const pending = tasks.filter((task) => !task.done).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4)
   const openTasks = tasks.filter((task) => !task.done)
@@ -342,157 +278,109 @@ function Dashboard() {
   })
   const distributionBackground = cropSegments.length ? `conic-gradient(${cropSegments.map((crop) => crop.segment).join(', ')})` : 'conic-gradient(rgba(255,255,255,.13) 0% 100%)'
   const todayLabel = new Intl.DateTimeFormat(language === 'kn' ? 'kn-IN' : 'en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(sessionDate)
-  if (!profile) return <Onboarding />
-  return <div className={`m-page m-dashboard-page ${themeActive ? 'm-dashboard-video-theme' : ''}`}>
-    {themeActive && (
-      <div className={`m-dashboard-videography ${!videoPlaying ? 'is-paused' : ''}`}>
-        {!heroVideoFailed && !reduceMotion ? (
-          <video
-            ref={videoRef}
-            className="m-dashboard-bg-video"
-            aria-hidden="true"
-            tabIndex={-1}
-            autoPlay
-            muted={isMuted}
-            loop
-            playsInline
-            preload="auto"
-            poster={HERO_POSTER_URL}
-            onTimeUpdate={handleTimeUpdate}
-            onError={() => setHeroVideoFailed(true)}
-          >
-            <source src={HERO_VIDEO_URL} type="video/mp4" />
-          </video>
-        ) : (
-          <div className="m-dashboard-bg-poster" style={{ backgroundImage: `url(${HERO_POSTER_URL})` }} aria-hidden="true" />
-        )}
-        <div className={`m-dashboard-pixels-grid mode-${pixelMode}`} aria-hidden="true" />
-        <div className="m-dashboard-vignette" aria-hidden="true" />
-      </div>
-    )}
-
-    {/* UI Pixels 10-Second Live Videography Control Dock */}
-    <div className="m-videography-hud" role="region" aria-label="Dashboard Videography Controls">
-      <div className="m-videography-status">
-        <span className={`m-videography-dot ${videoPlaying ? 'live' : 'paused'}`} aria-hidden="true" />
-        <span className="m-videography-label">
-          <b>UI Pixels Farm Videography</b>
-          <small>Farmer working the land with farming tool · 10s Pexels loop</small>
-        </span>
-        <span className="m-videography-time-badge" aria-live="off">
-          {videoProgress.toFixed(1)}s / 10.0s Loop
-        </span>
-      </div>
-      <div className="m-videography-progress-track" title="10-second loop progress">
-        <div className="m-videography-progress-bar" style={{ width: `${Math.min(100, Math.max(0, (videoProgress / 10) * 100))}%` }} />
-      </div>
-      <div className="m-videography-controls">
-        <button
-          type="button"
-          className="m-videography-btn"
-          onClick={toggleVideoPlay}
-          title={videoPlaying ? 'Pause 10s background video' : 'Play 10s background video'}
-          aria-label={videoPlaying ? 'Pause video' : 'Play video'}
+  const p = profile || defaultProfile
+  return <div className="m-page m-dashboard-page m-dashboard-video-theme">
+    <div className="m-dashboard-videography">
+      {!heroVideoFailed && !reduceMotion ? (
+        <video
+          ref={videoRef}
+          className="m-dashboard-bg-video"
+          aria-hidden="true"
+          tabIndex={-1}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          poster={HERO_POSTER_URL}
+          onError={() => setHeroVideoFailed(true)}
         >
-          {videoPlaying ? '⏸ Pause' : '▶ Play'}
-        </button>
-        <button
-          type="button"
-          className={`m-videography-btn ${!isMuted ? 'active' : ''}`}
-          onClick={toggleMute}
-          title={isMuted ? 'Unmute farm audio' : 'Mute audio'}
-          aria-label={isMuted ? 'Unmute audio' : 'Mute audio'}
-        >
-          {isMuted ? '🔇 Muted' : '🔊 Sound'}
-        </button>
-        <button
-          type="button"
-          className={`m-videography-btn ${pixelMode !== 'off' ? 'active' : ''}`}
-          onClick={cyclePixelMode}
-          title="Cycle UI Pixels grid overlay (Matrix, Dots, Scanline, Off)"
-        >
-          ⊞ UI Pixels: <b>{pixelMode}</b>
-        </button>
-        <button
-          type="button"
-          className={`m-videography-btn ${themeActive ? 'active' : ''}`}
-          onClick={() => setThemeActive(!themeActive)}
-          title="Toggle ambient background videography theme"
-        >
-          {themeActive ? '✦ Theme Active' : '✧ Theme Off'}
-        </button>
-        <a
-          className="m-videography-credit"
-          href="https://www.pexels.com/video/farmer-tending-field-with-hoe-and-water-hose-37654726/"
-          target="_blank"
-          rel="noreferrer"
-          title="View original stock video on Pexels"
-        >
-          Pexels ↗
-        </a>
-      </div>
+          <source src="/videos/farm-hero.mp4" type="video/mp4" />
+          <source src={HERO_VIDEO_URL} type="video/mp4" />
+        </video>
+      ) : (
+        <div className="m-dashboard-bg-poster" style={{ backgroundImage: `url(${HERO_POSTER_URL})` }} aria-hidden="true" />
+      )}
+      <div className="m-dashboard-vignette" aria-hidden="true" />
     </div>
 
-    <div className="m-welcome">
-      {!themeActive && !heroVideoFailed && !reduceMotion && <video
-        className="m-welcome-video"
-        aria-hidden="true"
-        tabIndex={-1}
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        poster={HERO_POSTER_URL}
-        onTimeUpdate={(event) => {
-          if (event.currentTarget.currentTime >= 10) event.currentTarget.currentTime = 0
-        }}
-        onError={() => setHeroVideoFailed(true)}
-      >
-        <source src={HERO_VIDEO_URL} type="video/mp4" />
-      </video>}
-      <div className="m-welcome-copy"><span className="m-eyebrow">{todayLabel} · FARM OVERVIEW</span><h1>{t('Welcome back', language)}, {profile?.name ? profile.name.split(' ')[0] : 'Farmer'} <span>👋</span></h1><p>{t('Your fields are ready for another day of thoughtful growing.', language)}</p><div className="m-welcome-meta"><span>⌖ {profile.village || profile.district}, {profile.state}</span><span>▣ {profile.landSize} {profile.landUnit} registered</span></div><div className="m-welcome-actions"><Button onClick={() => navigate('/crop-growth')}>{t('+ Add crop record', language)}</Button><NavLink className="m-welcome-link" to="/ai-assistant">{t('Ask Farm Assistant →', language)}</NavLink></div></div>
-      <a className="m-welcome-video-credit" href="https://www.pexels.com/video/farmer-tending-field-with-hoe-and-water-hose-37654726/" target="_blank" rel="noreferrer">Farmer at work · Pexels ↗</a>
+    <div className="m-welcome m-card-has-video">
+      <CardVideoAccent src="/videos/today-farm.mp4" />
+      <div className="m-welcome-copy">
+        <span className="m-eyebrow">{todayLabel} · {t('FARM OVERVIEW', language)}</span>
+        <h1>{t('Welcome back', language)}, {p?.name ? p.name.split(' ')[0] : 'Farmer'} <span>👋</span></h1>
+        <p>{t('Your fields are ready for another day of thoughtful growing.', language)}</p>
+        <div className="m-welcome-meta">
+          <span>⌖ {p.village || p.district}, {p.state}</span>
+          <span>▣ {p.landSize} {p.landUnit} {t('registered', language)}</span>
+        </div>
+        <div className="m-welcome-actions">
+          <Button onClick={() => navigate('/crop-growth')}>{t('+ Add crop record', language)}</Button>
+          <NavLink className="m-welcome-link" to="/ai-assistant">{t('Ask Farm Assistant →', language)}</NavLink>
+        </div>
+      </div>
     </div>
     <div className="m-stat-grid m-dashboard-stats">
-      <Card className="m-stat"><span className="m-stat-icon">⌂</span><span>{t('Registered land', language)}</span><b>{profile.landSize} <small>{profile.landUnit}</small></b><small className="m-stat-foot">Farm profile record</small></Card>
+      <Card className="m-stat"><span className="m-stat-icon">⌂</span><span>{t('Registered land', language)}</span><b>{p.landSize} <small>{p.landUnit}</small></b><small className="m-stat-foot">Farm profile record</small></Card>
       <Card className="m-stat"><span className="m-stat-icon">♧</span><span>{t('Crops registered', language)}</span><b>{crops.length}</b><small className="m-stat-foot">{cropArea ? `${cropArea.toLocaleString()} acres recorded` : 'No crop area recorded'}</small></Card>
-      <Card className="m-stat"><span className="m-stat-icon">▦</span><span>Open farm tasks</span><b>{openTasks.length}</b><small className="m-stat-foot">{openTasks.length ? `${openTasks.filter((task) => task.date <= dateToday()).length} due today or earlier` : 'No open reminders'}</small></Card>
+      <Card className="m-stat"><span className="m-stat-icon">▦</span><span>{t('Upcoming farming tasks', language)}</span><b>{openTasks.length}</b><small className="m-stat-foot">{openTasks.length ? `${openTasks.filter((task) => task.date <= dateToday()).length} due today or earlier` : 'No open reminders'}</small></Card>
       <Card className="m-stat"><span className="m-stat-icon">✚</span><span>AI health score</span><b className="m-stat-unavailable">Not assessed</b><small className="m-stat-foot">No verified crop-health score</small></Card>
     </div>
     <div className="m-dashboard-columns m-dashboard-primary">
-      <Card className="m-dashboard-health"><div className="m-section-title"><div><span className="m-eyebrow">Field monitoring</span><h2>{t('Field health overview', language)}</h2></div><NavLink to="/crop-doctor">{t('Open Crop Doctor →', language)}</NavLink></div>
-        <div className="m-health-empty"><div className="m-health-ring"><span>—</span></div><div><b>Health checks need field observations</b><p>No verified AI crop diagnosis or measured field-health data is available yet. Check a plant photo or record what you observe.</p><NavLink className="m-button primary" to="/crop-doctor">Check a crop photo</NavLink></div></div>
+      <Card className="m-dashboard-health m-card-has-video">
+        <CardVideoAccent src="/videos/field-health.mp4" />
+        <div className="m-section-title"><div><span className="m-eyebrow">Field monitoring</span><h2>{t('Field health overview', language)}</h2></div><NavLink to="/crop-doctor">{t('Open Crop Doctor →', language)}</NavLink></div>
+        <div className="m-health-empty"><div className="m-health-ring"><span>—</span></div><div><b>Health checks need field observations</b><p>No verified AI crop diagnosis or measured field-health data is available yet. Check a plant photo or record what you observe.</p><NavLink className="m-button primary" to="/crop-doctor">{t('Check a crop photo', language)}</NavLink></div></div>
       </Card>
-      <WeatherPeek location={profile.village || profile.district || ''} onOpen={() => navigate('/weather')} />
+      <WeatherPeek location={p.village || p.district || ''} onOpen={() => navigate('/weather')} />
     </div>
     <div className="m-dashboard-columns m-dashboard-secondary">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm profile</span><h2>{t('Soil health summary', language)}</h2></div><NavLink to="/smart-water">{t('Open soil tools', language)} →</NavLink></div><div className="m-soil-summary"><span className="m-soil-icon">♧</span><div><b>{profile.soil || 'Soil type not recorded'}</b><small>Farmer-entered profile · not a laboratory measurement</small></div></div><div className="m-soil-summary-grid"><div><small>Water availability</small><b>{profile.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{profile.irrigation || 'Not recorded'}</b></div></div><NavLink className="m-button light" to="/smart-water">Open soil tools</NavLink></Card>
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">On your land</span><h2>Crop distribution</h2></div><NavLink to="/crop-growth">Manage crops →</NavLink></div>
-        {cropSegments.length ? <div className="m-crop-distribution"><div className="m-crop-donut" style={{ background: distributionBackground }}><span>{cropArea.toLocaleString()}<small>acres</small></span></div><div className="m-crop-legend">{cropSegments.slice(0, 5).map((crop) => <div key={crop.id}><i style={{ background: crop.color }} /><span>{crop.name}</span><b>{Number(crop.area || 0).toLocaleString()} ac</b></div>)}</div></div> : <EmptyState title="No crop area recorded" detail="Add crop and field area records to see their distribution." action={<Button variant="light" onClick={() => navigate('/crop-growth')}>Add crop</Button>} />}
+      <Card className="m-card-has-video">
+        <CardVideoAccent src="/videos/soil-health.mp4" />
+        <div className="m-section-title"><div><span className="m-eyebrow">Farm profile</span><h2>{t('Soil health summary', language)}</h2></div><NavLink to="/smart-water">{t('Open soil tools', language)} →</NavLink></div><div className="m-soil-summary"><span className="m-soil-icon">♧</span><div><b>{p.soil || 'Soil type not recorded'}</b><small>Farmer-entered profile · not a laboratory measurement</small></div></div><div className="m-soil-summary-grid"><div><small>Water availability</small><b>{p.water || 'Not recorded'}</b></div><div><small>Irrigation</small><b>{p.irrigation || 'Not recorded'}</b></div></div><NavLink className="m-button light" to="/smart-water">{t('Open soil tools', language)}</NavLink>
+      </Card>
+      <Card className="m-card-has-video">
+        <CardVideoAccent src="/videos/crop-dist.mp4" />
+        <div className="m-section-title"><div><span className="m-eyebrow">On your land</span><h2>{t('Crop distribution', language)}</h2></div><NavLink to="/crop-growth">{t('Manage crops →', language)}</NavLink></div>
+        {cropSegments.length ? <div className="m-crop-distribution"><div className="m-crop-donut" style={{ background: distributionBackground }}><span>{cropArea.toLocaleString()}<small>acres</small></span></div><div className="m-crop-legend">{cropSegments.slice(0, 5).map((crop) => <div key={crop.id}><i style={{ background: crop.color }} /><span>{crop.name}</span><b>{Number(crop.area || 0).toLocaleString()} ac</b></div>)}</div></div> : <EmptyState title="No crop area recorded" detail="Add crop and field area records to see their distribution." action={<Button variant="light" onClick={() => navigate('/crop-growth')}>{t('Add crop', language)}</Button>} />}
       </Card>
     </div>
     <div className="m-dashboard-columns">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Field observations</span><h2>Soil moisture trend</h2></div><NavLink to="/smart-water">Water & soil →</NavLink></div><div className="m-chart-unavailable"><span>⌁</span><div><b>No sensor readings recorded</b><p>Connect or record actual soil-moisture readings to show a trend. This dashboard does not estimate moisture from photos.</p></div></div></Card>
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Your next steps</span><h2>Upcoming farming tasks</h2></div><NavLink to="/calendar">View calendar →</NavLink></div>
-        {pending.length ? <ul className="m-task-list">{pending.map((task) => <li key={task.id}><span className="m-task-dot"></span><span><b>{task.title}</b><small>{task.date === dateToday() ? 'Today' : task.date}{task.crop ? ` · ${task.crop}` : ''}</small></span></li>)}</ul> : <EmptyState title="No upcoming activities" detail="Keep track of field work by adding tasks to your calendar." action={<Button variant="light" onClick={() => navigate('/calendar')}>Add activity</Button>} />}
+      <Card className="m-card-has-video">
+        <CardVideoAccent src="/videos/soil-moisture.mp4" />
+        <div className="m-section-title"><div><span className="m-eyebrow">Field observations</span><h2>{t('Soil moisture trend', language)}</h2></div><NavLink to="/smart-water">{t('Water & soil', language)} →</NavLink></div><div className="m-chart-unavailable"><span>⌁</span><div><b>No sensor readings recorded</b><p>Connect or record actual soil-moisture readings to show a trend. This dashboard does not estimate moisture from photos.</p></div></div>
+      </Card>
+      <Card className="m-card-has-video">
+        <CardVideoAccent src="/videos/upcoming-tasks.mp4" />
+        <div className="m-section-title"><div><span className="m-eyebrow">Your next steps</span><h2>{t('Upcoming farming tasks', language)}</h2></div><NavLink to="/calendar">{t('View calendar →', language)}</NavLink></div>
+        {pending.length ? <ul className="m-task-list">{pending.map((task) => <li key={task.id}><span className="m-task-dot"></span><span><b>{task.title}</b><small>{task.date === dateToday() ? 'Today' : task.date}{task.crop ? ` · ${task.crop}` : ''}</small></span></li>)}</ul> : <EmptyState title="No upcoming activities" detail="Keep track of field work by adding tasks to your calendar." action={<Button variant="light" onClick={() => navigate('/calendar')}>{t('Add activity', language)}</Button>} />}
       </Card>
     </div>
     <div className="m-dashboard-columns">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">On your land</span><h2>My crops</h2></div><NavLink to="/crop-growth">Manage crops →</NavLink></div>
-        {crops.length ? <div className="m-crop-list">{crops.slice(0, 4).map((crop) => <div key={crop.id}><CropSummary crop={crop} /><div className="m-dashboard-crop-progress"><div className="m-progress"><span style={{ width: `${crop.stageIndex < 0 ? 0 : percent(crop.stageIndex + 1, stages.length)}%` }} /></div><small>{crop.stageIndex < 0 ? 'Growth stage not recorded' : `${percent(crop.stageIndex + 1, stages.length)}% of recorded lifecycle`} · {crop.health || 'Health not assessed'}</small></div></div>)}</div> : <EmptyState title="No crops registered yet" detail="Add a crop with its sowing date to start tracking real progress." action={<Button onClick={() => navigate('/crop-growth')}>Register a crop</Button>} />}
+      <Card className="m-card-has-video">
+        <CardVideoAccent src="/videos/my-crops.mp4" />
+        <div className="m-section-title"><div><span className="m-eyebrow">On your land</span><h2>{t('My crops', language)}</h2></div><NavLink to="/crop-growth">{t('Manage crops →', language)}</NavLink></div>
+        {crops.length ? <div className="m-crop-list">{crops.slice(0, 4).map((crop) => <div key={crop.id}><CropSummary crop={crop} /><div className="m-dashboard-crop-progress"><div className="m-progress"><span style={{ width: `${crop.stageIndex < 0 ? 0 : percent(crop.stageIndex + 1, stages.length)}%` }} /></div><small>{crop.stageIndex < 0 ? 'Growth stage not recorded' : `${percent(crop.stageIndex + 1, stages.length)}% of recorded lifecycle`} · {crop.health || 'Health not assessed'}</small></div></div>)}</div> : <EmptyState title="No crops registered yet" detail="Add a crop with its sowing date to start tracking real progress." action={<Button onClick={() => navigate('/crop-growth')}>{t('Register a crop', language)}</Button>} />}
       </Card>
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm activity</span><h2>Recent field notes</h2></div><NavLink to="/crop-growth">Crop records →</NavLink></div>
-        {observations.length ? <div className="m-recent-activity">{observations.slice(0, 4).map((item) => <div key={item.id}><span className="m-activity-marker">•</span><p><b>{crops.find((crop) => crop.id === item.cropId)?.name || 'Farm note'}</b><span>{item.text}</span><small>{item.date}</small></p></div>)}</div> : <EmptyState title="No field notes yet" detail="Observations you add to crop records will appear here." action={<Button variant="light" onClick={() => navigate('/crop-growth')}>Add observation</Button>} />}
+      <Card className="m-card-has-video">
+        <CardVideoAccent src="/videos/recent-notes.mp4" />
+        <div className="m-section-title"><div><span className="m-eyebrow">Farm activity</span><h2>{t('Recent field notes', language)}</h2></div><NavLink to="/crop-growth">{t('Crop records →', language)}</NavLink></div>
+        {observations.length ? <div className="m-recent-activity">{observations.slice(0, 4).map((item) => <div key={item.id}><span className="m-activity-marker">•</span><p><b>{crops.find((crop) => crop.id === item.cropId)?.name || 'Farm note'}</b><span>{item.text}</span><small>{item.date}</small></p></div>)}</div> : <EmptyState title="No field notes yet" detail="Observations you add to crop records will appear here." action={<Button variant="light" onClick={() => navigate('/crop-growth')}>{t('Add observation', language)}</Button>} />}
       </Card>
     </div>
     <div className="m-dashboard-columns">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Farm finances</span><h2>Expense summary</h2></div><NavLink to="/expenses">See expenses →</NavLink></div>{expenses.length ? <><div className="m-finance-total">{money(expenseTotal)}<small>Total recorded farm expenses</small></div><div className="m-inline-stats"><span>{expenses.length} records</span><span>Budget: {profile.budget != null ? money(profile.budget) : 'Not recorded'}</span></div><div className="m-dashboard-expense-bars">{categories.map((category) => { const amount = expenses.filter((item) => item.category === category).reduce((sum, item) => sum + Number(item.amount || 0), 0); return amount ? <div key={category}><span>{category}</span><div className="m-progress"><span style={{ width: `${percent(amount, expenseTotal)}%` }} /></div><b>{money(amount)}</b></div> : null })}</div></> : <EmptyState title="No expenses recorded" detail="Add a record when you make a farm purchase; no spending is assumed." action={<Button variant="light" onClick={() => navigate('/expenses')}>Record an expense</Button>} />}</Card>
-      <WeatherPeek location={profile.village || profile.district || ''} onOpen={() => navigate('/weather')} />
+      <Card className="m-card-has-video">
+        <CardVideoAccent src="/videos/expenses.mp4" />
+        <div className="m-section-title"><div><span className="m-eyebrow">Farm finances</span><h2>{t('Expense summary', language)}</h2></div><NavLink to="/expenses">{t('See expenses →', language)}</NavLink></div>{expenses.length ? <><div className="m-finance-total">{money(expenseTotal)}<small>Total recorded farm expenses</small></div><div className="m-inline-stats"><span>{expenses.length} records</span><span>Budget: {p.budget != null ? money(p.budget) : 'Not recorded'}</span></div><div className="m-dashboard-expense-bars">{categories.map((category) => { const amount = expenses.filter((item) => item.category === category).reduce((sum, item) => sum + Number(item.amount || 0), 0); return amount ? <div key={category}><span>{category}</span><div className="m-progress"><span style={{ width: `${percent(amount, expenseTotal)}%` }} /></div><b>{money(amount)}</b></div> : null })}</div></> : <EmptyState title="No expenses recorded" detail="Add a record when you make a farm purchase; no spending is assumed." action={<Button variant="light" onClick={() => navigate('/expenses')}>{t('Record an expense', language)}</Button>} />}
+      </Card>
+      <WeatherPeek location={p.village || p.district || ''} onOpen={() => navigate('/weather')} />
     </div>
     <div className="m-dashboard-columns">
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Market information</span><h2>Mandi price highlights</h2></div><NavLink to="/market-price">Open source →</NavLink></div><div className="m-not-connected"><span>₹</span><p><b>Live prices not connected</b><small>We do not show sample rates as today's prices. Check Agmarknet for verified market reports.</small></p><a href="https://agmarknet.gov.in/" target="_blank" rel="noreferrer">Agmarknet ↗</a></div></Card>
-      <Card><div className="m-section-title"><div><span className="m-eyebrow">Planning guidance</span><h2>Plan with verified local information</h2></div><NavLink to="/crop-analyzer">Open Crop Analyzer →</NavLink></div><p>No ranked crop predictions or yield estimates are shown without a verified local source.</p><div className="m-dashboard-alert"><b>Crop health is not assessed</b><small>No diagnosis or measured field-health data is available. Record observations or submit a crop photo when the trained model is ready.</small><NavLink to="/crop-doctor">Open Crop Doctor →</NavLink></div></Card>
+      <Card className="m-card-has-video">
+        <CardVideoAccent src="/videos/mandi-price.mp4" />
+        <div className="m-section-title"><div><span className="m-eyebrow">Market information</span><h2>{t('Mandi price highlights', language)}</h2></div><NavLink to="/market-price">{t('Open source →', language)}</NavLink></div><div className="m-not-connected"><span>₹</span><p><b>Live prices not connected</b><small>We do not show sample rates as today's prices. Check Agmarknet for verified market reports.</small></p><a href="https://agmarknet.gov.in/" target="_blank" rel="noreferrer">Agmarknet ↗</a></div>
+      </Card>
+      <Card><div className="m-section-title"><div><span className="m-eyebrow">{t('Planning guidance', language)}</span><h2>Plan with verified local information</h2></div><NavLink to="/crop-analyzer">{t('Open Crop Analyzer →', language)}</NavLink></div><p>No ranked crop predictions or yield estimates are shown without a verified local source.</p><div className="m-dashboard-alert"><b>Crop health is not assessed</b><small>No diagnosis or measured field-health data is available. Record observations or submit a crop photo when the trained model is ready.</small><NavLink to="/crop-doctor">{t('Open Crop Doctor →', language)}</NavLink></div></Card>
     </div>
   </div>
 }
@@ -542,7 +430,9 @@ function WeatherPeek({ location, onOpen }) {
     Promise.resolve().then(() => loadWeather(controller.signal, false))
     return () => controller.abort()
   }, [loadWeather])
-  return <Card><div className="m-section-title"><div><span className="m-eyebrow">Area forecast</span><h2>Weather snapshot</h2></div><button className="m-plain-action" type="button" onClick={onOpen}>7-day →</button></div>
+  return <Card className="m-card-has-video">
+    <CardVideoAccent src="/videos/weather.mp4" />
+    <div className="m-section-title"><div><span className="m-eyebrow">Area forecast</span><h2>Weather snapshot</h2></div><button className="m-plain-action" type="button" onClick={onOpen}>7-day →</button></div>
     {weather ? <div className="m-dashboard-weather"><div><span className="m-weather-symbol">{weatherDescription(weather.weather_code)[1]}</span><b>{Math.round(weather.temperature_2m)}°C</b><small>{weatherDescription(weather.weather_code)[0]} · {weather.place.name}</small></div><div><span>Humidity</span><b>{weather.relative_humidity_2m}%</b></div><div><span>Rain chance today</span><b>{weather.rainChance ?? '—'}%</b></div><div><span>Wind</span><b>{weather.wind_speed_10m} km/h</b></div><small className="m-live-label">LIVE FORECAST · OPEN-METEO</small></div> : <div className="m-weather-empty"><span>☼</span><p><b>{status === 'loading' ? 'Checking current forecast…' : 'Live weather is not loaded'}</b><small>{error || `Fetch current conditions for ${location}. No sample weather is shown.`}</small></p><Button variant="light" onClick={() => loadWeather()} disabled={status === 'loading'}>{status === 'loading' ? 'Loading…' : 'Try again'}</Button></div>}
   </Card>
 }
@@ -3211,424 +3101,6 @@ function MarkdownContent({ content }) {
     if (paragraph.length) blocks.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(paragraph.join(' '), `paragraph-${index}`)}</p>)
   }
   return <div className="m-markdown">{blocks}</div>
-}
-
-function AssistantPage({ voiceFirst = false }) {
-  const { profile, crops, tasks, expenses, observations, language } = useFarm()
-  const location = useLocation()
-  const navigate = useNavigate()
-  const [token, setToken] = useState(() => localStorage.getItem(CHAT_TOKEN_KEY) || '')
-  const [user, setUser] = useState({ name: 'Farmer' })
-  const [authMode, setAuthMode] = useState('login')
-  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' })
-  const [guestMessages, setGuestMessages] = useState([])
-  const [conversationList, setConversationList] = useState([])
-  const [conversationId, setConversationId] = useState('')
-  const [question, setQuestion] = useState('')
-  const [pendingReply, setPendingReply] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
-  const [health, setHealth] = useState(null)
-  const [voiceStatus, setVoiceStatus] = useState('')
-  const [voiceLanguage, setVoiceLanguage] = useState(language === 'kn' ? 'kn-IN' : 'en-IN')
-  const [speakingMessage, setSpeakingMessage] = useState('')
-  const [speechPaused, setSpeechPaused] = useState(false)
-  const [historySearch, setHistorySearch] = useState('')
-  const [savedAnalysisContext, setSavedAnalysisContext] = useState({ recentCropDiagnoses: [], recentSoilAnalyses: [] })
-  const [savedAnalysisToken, setSavedAnalysisToken] = useState('')
-  const [farmContextError, setFarmContextError] = useState('')
-  const recognitionRef = useRef(null)
-  const endOfMessagesRef = useRef(null)
-  const initialPromptRef = useRef('')
-  const signedIn = Boolean(token && user)
-  const context = useMemo(() => ({
-    farmer: profile ? {
-      name: profile.name,
-      landSize: profile.landSize,
-      landUnit: profile.landUnit,
-      availableBudget: profile.budget,
-      waterAvailability: profile.water,
-      irrigationMethod: profile.irrigation,
-    } : null,
-    crops: crops.map((crop) => ({ ...crop, currentGrowthStage: crop.stageIndex >= 0 ? stages[crop.stageIndex] : 'not recorded', daysAfterSowing: daysSince(crop.sowingDate) })),
-    location: profile ? { village: profile.village, district: profile.district, state: profile.state } : null,
-    soilInformation: profile?.soil ? { type: profile.soil, source: 'farmer-entered profile; no test values provided' } : null,
-    recentCropObservations: observations.slice(0, 15).map(({ cropId, date, text }) => ({ crop: crops.find((crop) => crop.id === cropId)?.name || 'Unknown crop', date, text })),
-    fertilizerAndIrrigationHistory: expenses.filter((item) => /fertiliz|irrigat/i.test(item.category)).slice(0, 15),
-    plannedAndCompletedActivities: tasks.slice(0, 15),
-    recordedExpenses: expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0),
-    farmRecordSource: 'farmer-entered browser records; not synced to an account',
-    accountName: signedIn ? user.name : null,
-    ...(signedIn && savedAnalysisToken === token ? savedAnalysisContext : { recentCropDiagnoses: [], recentSoilAnalyses: [] }),
-    weather: 'Not supplied unless fetched for this request. Do not infer current weather.',
-    marketPrices: 'Not supplied. Do not invent current prices.',
-  }), [profile, crops, observations, expenses, tasks, signedIn, user?.name, savedAnalysisContext, savedAnalysisToken, token])
-  const activeConversation = conversationList.find((item) => item.id === conversationId)
-  const messages = signedIn ? activeConversation?.messages || EMPTY_CHAT_MESSAGES : guestMessages
-  const suggestions = [
-    'Which crop is suitable for my soil?',
-    'How can I improve soil fertility?',
-    'Why are my plant leaves turning yellow?',
-    'How often should I irrigate my crops?',
-    'What fertilizers are suitable for my crop?',
-    'How can I identify plant diseases?',
-    'What should I do during heavy rainfall?',
-    'How can I increase crop production?',
-    'Explain the recorded growth stage of my crop.',
-    'How can I protect my crops from pests?',
-  ]
-  const visibleConversations = conversationList.filter((item) => item.title.toLowerCase().includes(historySearch.trim().toLowerCase()))
-
-  useEffect(() => {
-    let active = true
-    apiRequest('/health').then((data) => { if (active) setHealth(data) }).catch((requestError) => { if (active) setHealth({ error: requestError.message }) })
-    return () => { active = false }
-  }, [])
-
-  useEffect(() => {
-    if (!token) return undefined
-    let active = true
-    apiRequest('/auth/me', { token }).then(async ({ user: currentUser }) => {
-      const { conversations } = await apiRequest('/chat/history', { token })
-      if (!active) return
-      setUser(currentUser)
-      setConversationList(conversations)
-      setConversationId((current) => conversations.some((item) => item.id === current) ? current : conversations[0]?.id || '')
-      setError('')
-    }).catch((requestError) => {
-      if (!active) return
-      localStorage.removeItem(CHAT_TOKEN_KEY)
-      setToken('')
-      setUser({ name: 'Farmer' })
-      setSavedAnalysisContext({ recentCropDiagnoses: [], recentSoilAnalyses: [] })
-      setSavedAnalysisToken('')
-      setFarmContextError('')
-      setError(requestError.message)
-    })
-    return () => { active = false }
-  }, [token])
-
-  useEffect(() => {
-    if (!signedIn) return undefined
-    let active = true
-    Promise.allSettled([
-      apiRequest('/crop-doctor/history', { token }),
-      apiRequest('/soil/history', { token }),
-    ]).then(([cropResult, soilResult]) => {
-      if (!active) return
-      const recentCropDiagnoses = cropResult.status === 'fulfilled'
-        ? cropResult.value.diagnoses.slice(0, 5).map(({ cropName, diseaseName, confidence, severity, createdAt, predictionStatus }) => ({ cropName, diseaseName, confidence, severity, createdAt, predictionStatus }))
-        : []
-      const recentSoilAnalyses = soilResult.status === 'fulfilled'
-        ? soilResult.value.analyses.slice(0, 5).map(({ cropName, location, predicted_class, confidence, model_version, status, createdAt }) => ({ cropName, location, predictedClass: predicted_class, confidence, modelVersion: model_version, status, createdAt }))
-        : []
-      const errors = [cropResult, soilResult].filter((result) => result.status === 'rejected')
-      setSavedAnalysisContext({ recentCropDiagnoses, recentSoilAnalyses })
-      setSavedAnalysisToken(token)
-      setFarmContextError(errors.length ? 'Some saved crop or soil history could not be loaded. Chat will use the farm details available in this browser.' : '')
-    })
-    return () => { active = false }
-  }, [signedIn, token])
-
-  useEffect(() => {
-    endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages, pendingReply, loading])
-
-  useEffect(() => () => {
-    recognitionRef.current?.stop()
-    window.speechSynthesis?.cancel()
-  }, [])
-
-  const refreshHistory = useCallback(async (keepId = conversationId) => {
-    const { conversations } = await apiRequest('/chat/history', { token })
-    setConversationList(conversations)
-    setConversationId((current) => keepId && conversations.some((item) => item.id === keepId) ? keepId : current && conversations.some((item) => item.id === current) ? current : conversations[0]?.id || '')
-  }, [token, conversationId])
-
-  const submitAuth = async (event) => {
-    event.preventDefault()
-    setError('')
-    setLoading(true)
-    try {
-      const endpoint = authMode === 'register' ? '/auth/register' : '/auth/login'
-      const result = await apiRequest(endpoint, { method: 'POST', body: JSON.stringify(authForm) })
-      localStorage.setItem(CHAT_TOKEN_KEY, result.token)
-      setToken(result.token)
-      setUser(result.user)
-      setAuthForm({ name: '', email: '', password: '' })
-    } catch (requestError) {
-      setError(requestError.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const logout = () => {
-    localStorage.removeItem(CHAT_TOKEN_KEY)
-    setToken('')
-    setUser({ name: 'Farmer' })
-    setConversationList([])
-    setConversationId('')
-    setGuestMessages([])
-    setSavedAnalysisContext({ recentCropDiagnoses: [], recentSoilAnalyses: [] })
-    setSavedAnalysisToken('')
-    setFarmContextError('')
-  }
-
-  const newChat = async () => {
-    setError('')
-    if (!signedIn) {
-      setGuestMessages([])
-      setConversationId('')
-      setNotice('Started a new chat. Guest conversations are kept only until you leave this page.')
-      return
-    }
-    try {
-      const result = await apiRequest('/chat/new', { method: 'POST', token })
-      setConversationId(result.conversationId)
-      await refreshHistory(result.conversationId)
-    } catch (requestError) {
-      setError(requestError.message)
-    }
-  }
-
-  const removeChat = async (id = conversationId, confirmRemoval = true) => {
-    if (!signedIn || !id || (confirmRemoval && !window.confirm('Delete this conversation and its saved messages?'))) return
-    setError('')
-    try {
-      await apiRequest(`/chat/history/${id}`, { method: 'DELETE', token })
-      setConversationList((items) => items.filter((item) => item.id !== id))
-      setConversationId((current) => current === id ? '' : current)
-    } catch (requestError) {
-      setError(requestError.message)
-    }
-  }
-
-  const clearHistory = async () => {
-    if (!signedIn || !conversationList.length || !window.confirm('Permanently delete all of your saved assistant conversations?')) return
-    setError('')
-    try {
-      await apiRequest('/chat/history', { method: 'DELETE', token })
-      setConversationList([])
-      setConversationId('')
-      setNotice('All saved conversations were deleted.')
-    } catch (requestError) {
-      setError(requestError.message)
-    }
-  }
-
-  const streamQuestion = useCallback(async (text = question, retry = false) => {
-    const prompt = text.trim()
-    if (!prompt || loading) return
-    setQuestion('')
-    setError('')
-    setNotice('')
-    setPendingReply('')
-    setLoading(true)
-    let targetConversation = conversationId
-    let streamError = ''
-    const priorGuestMessages = signedIn ? [] : retry && guestMessages.at(-1)?.role === 'user' ? guestMessages.slice(0, -1) : guestMessages
-    const userMessage = { id: crypto.randomUUID(), role: 'user', content: prompt, created_at: new Date().toISOString() }
-    if (!signedIn && !retry) {
-      setGuestMessages((items) => [...items, userMessage])
-    }
-    try {
-      const currentContext = {
-        ...context,
-        weather: await lookupWeatherForChat(profile?.village || profile?.district || ''),
-      }
-      const response = await fetch('/api/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(signedIn ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ ...(signedIn && targetConversation ? { conversationId: targetConversation } : {}), message: prompt, context: currentContext, language: voiceLanguage.slice(0, 2), history: signedIn ? [] : priorGuestMessages.slice(-20).map(({ role, content }) => ({ role, content })) }),
-      })
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}))
-        throw new Error(body.error || `Chat request failed (${response.status}).`)
-      }
-      if (!response.body) throw new Error('This browser does not support streamed replies. Please refresh and try again.')
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let reply = ''
-      while (true) {
-        const { value, done } = await reader.read()
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
-        const events = buffer.split('\n\n')
-        buffer = events.pop() || ''
-        for (const rawEvent of events) {
-          const eventName = rawEvent.match(/^event: ([^\n]+)/m)?.[1]
-          const dataLine = rawEvent.split('\n').find((line) => line.startsWith('data: '))
-          if (!dataLine) continue
-          const data = JSON.parse(dataLine.slice(6))
-          if (eventName === 'conversation') {
-            if (signedIn) {
-              targetConversation = data.conversationId
-              setConversationId(targetConversation)
-            }
-          } else if (eventName === 'delta') {
-            reply += data.text
-            setPendingReply(reply)
-          } else if (eventName === 'error') {
-            streamError = data.error
-          }
-        }
-        if (done) break
-      }
-      if (signedIn) {
-        await refreshHistory(targetConversation)
-      } else {
-        setGuestMessages([...priorGuestMessages, userMessage, ...(reply ? [{ id: crypto.randomUUID(), role: 'model', content: reply, created_at: new Date().toISOString() }] : [])])
-      }
-      if (streamError) throw new Error(streamError)
-      setPendingReply('')
-    } catch (requestError) {
-      setError(requestError.message || 'Chat request failed.')
-      if (retry) setNotice('Retry did not complete. Your question remains available below.')
-    } finally {
-      setLoading(false)
-    }
-  }, [question, loading, conversationId, signedIn, guestMessages, context, profile, voiceLanguage, refreshHistory, token])
-
-  const retryLast = () => {
-    const lastUser = [...messages].reverse().find((message) => message.role === 'user')
-    if (lastUser) streamQuestion(lastUser.content, true)
-  }
-
-  const startVoice = async () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) return setVoiceStatus('Speech recognition is not available in this browser. Type your question instead, or use a browser/device with Web Speech recognition support.')
-    try {
-      const microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      microphoneStream.getTracks().forEach((track) => track.stop())
-      const recognition = new SpeechRecognition()
-      recognitionRef.current = recognition
-      recognition.lang = voiceLanguage
-      recognition.interimResults = true
-      recognition.continuous = false
-      recognition.onstart = () => setVoiceStatus('Listening… speak now.')
-      recognition.onresult = (event) => {
-        const transcript = Array.from(event.results).map((result) => result[0].transcript).join('')
-        setQuestion(transcript)
-        if (event.results[event.results.length - 1].isFinal) setVoiceStatus('Speech recognized. Review or edit the text before sending.')
-      }
-      recognition.onerror = (event) => setVoiceStatus(event.error === 'not-allowed' ? 'Microphone permission was denied. Allow microphone access in browser settings, or type your question.' : `Speech recognition failed (${event.error}). Check your connection or type instead.`)
-      recognition.onend = () => setVoiceStatus((current) => current === 'Listening… speak now.' ? 'No speech detected. Try again or type your question.' : current)
-      recognition.start()
-    } catch (requestError) {
-      setVoiceStatus(requestError.name === 'NotAllowedError' ? 'Microphone permission was denied. Allow it in browser settings or type your question.' : `Microphone error: ${requestError.message}`)
-    }
-  }
-
-  const stopVoice = () => {
-    recognitionRef.current?.stop()
-    setVoiceStatus('Listening stopped.')
-  }
-
-  const speak = (id, text) => {
-    if (!window.speechSynthesis) return setVoiceStatus('Text-to-speech is not supported in this browser.')
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = voiceLanguage
-    utterance.onstart = () => { setSpeakingMessage(id); setSpeechPaused(false) }
-    utterance.onend = () => { setSpeakingMessage(''); setSpeechPaused(false) }
-    utterance.onerror = () => { setSpeakingMessage(''); setVoiceStatus('Speech playback failed. Your written reply is still available.') }
-    window.speechSynthesis.speak(utterance)
-  }
-
-  const pauseSpeech = () => {
-    if (speechPaused) {
-      window.speechSynthesis.resume()
-      setSpeechPaused(false)
-    } else {
-      window.speechSynthesis.pause()
-      setSpeechPaused(true)
-    }
-  }
-  const stopSpeech = () => {
-    window.speechSynthesis?.cancel()
-    setSpeakingMessage('')
-    setSpeechPaused(false)
-  }
-  const copy = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setNotice('Reply copied to clipboard.')
-    } catch (copyError) {
-      console.error('Clipboard access failed.', copyError)
-      setError('Could not copy this reply. Clipboard permission may be blocked.')
-    }
-  }
-
-  useEffect(() => {
-    const initialPrompt = location.state?.assistantPrompt
-    if (typeof initialPrompt !== 'string' || !initialPrompt.trim() || initialPromptRef.current === initialPrompt) return
-    initialPromptRef.current = initialPrompt
-    navigate(location.pathname, { replace: true, state: null })
-    streamQuestion(initialPrompt)
-  }, [location.key, location.pathname, location.state, navigate, streamQuestion])
-
-  if (!user) return <div className="m-page"><Heading eyebrow={voiceFirst ? 'Voice assistant' : 'Farm assistant'} title={voiceFirst ? 'Speak with your farm assistant' : 'Farm assistant'} detail="Sign in or create an account to save conversations securely in the local backend database." /><Card className="m-auth-card"><div className="m-assistant-banner"><span>☏</span><div><h2>{health?.error ? 'Backend unavailable' : health ? 'Account service ready' : 'Connecting to server…'}</h2><p>{health?.error ? health.error : health?.gemini?.configured ? `Sign-in and account creation are ready. Gemini chat is enabled (${health.gemini.model}).` : health ? 'Sign-in and account creation are ready. To use AI chat, add GEMINI_API_KEY to server/.env and restart the backend.' : 'Checking the account service…'}</p></div></div><div className="m-auth-tabs"><button type="button" className={authMode === 'login' ? 'active' : ''} onClick={() => setAuthMode('login')}>Sign in</button><button type="button" className={authMode === 'register' ? 'active' : ''} onClick={() => setAuthMode('register')}>Create account</button></div><form className="m-form" onSubmit={submitAuth}>{authMode === 'register' && <label>Your name<input autoComplete="name" required minLength="2" value={authForm.name} onChange={(event) => setAuthForm({ ...authForm, name: event.target.value })} /></label>}<label>Email<input autoComplete="email" type="email" required value={authForm.email} onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })} /></label><label>Password (at least 10 characters)<input autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} type="password" minLength="10" required value={authForm.password} onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })} /></label><Button type="submit" disabled={loading}>{loading ? 'Please wait…' : authMode === 'register' ? 'Create account' : 'Sign in'}</Button></form>{error && <p className="m-error" role="alert">{error}</p>}<p className="m-muted">You can create an account without a Gemini key. Account credentials and chat history are stored by the local Express service in SQLite. This is a development setup; use HTTPS and a production database before deployment.</p></Card></div>
-
-  return <div className="m-page"><Heading eyebrow={voiceFirst ? 'Voice-first assistant' : 'Farm assistant'} title={voiceFirst ? 'Talk to your farm assistant' : 'Ask Gemini about your farm'} detail="Ask without signing in. Gemini uses the farm records currently available in this browser, and guest conversations stay only on this page." action={<div className="m-assistant-heading-actions"><span className={`m-backend-status ${health?.gemini?.configured ? 'ready' : ''}`}>{health?.gemini?.configured ? `Gemini · ${health.gemini.model}` : 'Gemini key not configured'}</span><Button variant="light" onClick={newChat}>＋ New chat</Button>{signedIn ? <Button variant="light" onClick={logout}>Sign out</Button> : <Button variant="light" onClick={() => setUser(null)}>Account (optional)</Button>}</div>} />
-    {farmContextError && <p className="m-muted" role="status">{farmContextError}</p>}
-    <div className="m-full-chat">
-      <aside className="m-chat-sidebar" aria-label="Conversation history">
-        <div className="m-chat-sidebar-brand"><span aria-hidden="true">F</span><div><b>FARM-SAATHI</b><small>AI farming assistant</small></div></div>
-        <Button type="button" onClick={newChat}>＋ New chat</Button>
-        {signedIn ? <>
-          <label className="m-chat-search">Search conversations<input type="search" value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Find a conversation" /></label>
-          <div className="m-chat-history-list">
-            {visibleConversations.map((item) => <div className={`m-chat-history-item ${item.id === conversationId ? 'active' : ''}`} key={item.id}>
-              <button type="button" onClick={() => setConversationId(item.id)} disabled={loading} aria-current={item.id === conversationId ? 'page' : undefined}>
-                <span>{item.title}</span><small>{new Date(item.updated_at).toLocaleDateString()}</small>
-              </button>
-              <button type="button" className="m-chat-delete" aria-label={`Delete conversation: ${item.title}`} onClick={() => removeChat(item.id)}>×</button>
-            </div>)}
-            {!visibleConversations.length && <p className="m-muted">{conversationList.length ? 'No conversations match your search.' : 'Your saved conversations will appear here.'}</p>}
-          </div>
-          {conversationList.length > 0 && <button className="m-chat-clear" type="button" onClick={clearHistory} disabled={loading}>Clear all chat history</button>}
-        </> : <div className="m-chat-guest-note"><p>Guest chats are temporary and stay in this browser tab.</p><Button type="button" variant="light" onClick={() => setUser(null)}>Sign in to save chats</Button></div>}
-      </aside>
-      <Card className="m-chat-main">
-        <div className="m-assistant-banner"><span aria-hidden="true">F</span><div><h2>Hello, {user.name || 'Farmer'}</h2><p>Farm context: {profile?.district || 'location not set'} · {crops.length} crops · {observations.length} observations · {expenses.length} expenses{signedIn ? ` · ${savedAnalysisContext.recentSoilAnalyses.length} soil reports · ${savedAnalysisContext.recentCropDiagnoses.length} crop diagnoses` : ''}</p></div></div>
-        <div className="m-chat-toolbar"><span>{activeConversation?.title || 'New conversation'}</span>{signedIn && conversationId && <Button type="button" variant="light" onClick={() => removeChat()}>Delete chat</Button>}</div>
-        {voiceFirst && <section className="m-voice-console"><div className={`m-listening-indicator ${voiceStatus.startsWith('Listening') ? 'active' : ''}`}>{voiceStatus.startsWith('Listening') ? 'Listening' : 'Mic'}</div><div><h2>Ask in your language</h2><p>{voiceStatus || 'Tap the microphone and speak. Recognized words appear below so you can review them before sending.'}</p></div><Button type="button" onClick={startVoice}>Start listening</Button><Button type="button" variant="light" onClick={stopVoice}>Stop listening</Button></section>}
-        {messages.length === 0 && !pendingReply ? <div className="m-chat-welcome"><span className="m-chat-welcome-mark" aria-hidden="true">F</span><h2>How can I help with your farm?</h2><p>Choose a question or type your own. Advice will use recorded farm information when available and will not assume missing measurements.</p><div className="m-chat-suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => streamQuestion(suggestion)} disabled={loading}>{suggestion}</button>)}</div></div> : <div className="m-chat-history" aria-live="polite">
-          {messages.map((message, messageIndex) => {
-            const previousQuestion = message.role === 'model'
-              ? messages.slice(0, messageIndex).reverse().find((item) => item.role === 'user')?.content || ''
-              : ''
-            const topic = message.role === 'model' ? relatedLearningTopic(`${previousQuestion} ${message.content}`) : null
-            return <article className={`m-chat-turn ${message.role === 'user' ? 'farmer' : 'assistant'}`} key={message.id}>
-              <div className={`m-chat-${message.role === 'user' ? 'question' : 'reply'}`}>
-                <div className="m-chat-message-heading"><b>{message.role === 'user' ? 'You' : 'FARM-SAATHI'}</b>{message.created_at && <time dateTime={message.created_at}>{String(message.created_at).replace('T', ' ').slice(0, 16)}</time>}</div>
-                {message.role === 'user' ? <p>{message.content}</p> : <MarkdownContent content={message.content} />}
-                {message.role === 'model' && <div className="m-message-actions"><button type="button" onClick={() => copy(message.content)}>Copy</button><button type="button" onClick={() => speak(message.id, message.content)}>Listen</button>{speakingMessage === message.id && <><button type="button" onClick={pauseSpeech}>{speechPaused ? 'Resume' : 'Pause'}</button><button type="button" onClick={stopSpeech}>Stop</button></>}</div>}
-                {topic && <details className="m-learning-resources">
-                  <summary>Related photos and videos · {topic.name}</summary>
-                  <div>
-                    <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(topic.video)}`} target="_blank" rel="noreferrer">Watch related farming videos ↗</a>
-                    <a href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(topic.images)}`} target="_blank" rel="noreferrer">Browse photo examples ↗</a>
-                    <a href={topic.url} target="_blank" rel="noreferrer">Official guide · {topic.source} ↗</a>
-                    <small>External results can vary. Check the source and confirm field-specific advice with a local agriculture expert.</small>
-                  </div>
-                </details>}
-              </div>
-            </article>
-          })}
-          {pendingReply && <article className="m-chat-turn assistant"><div className="m-chat-reply"><div className="m-chat-message-heading"><b>FARM-SAATHI</b><span>Typing</span></div><MarkdownContent content={pendingReply} /></div></article>}
-          {loading && !pendingReply && <div className="m-typing" role="status"><span></span><span></span><span></span> FARM-SAATHI is preparing a response…</div>}
-          <div ref={endOfMessagesRef} />
-        </div>}
-        <div className="m-language-row"><label>Answer and voice language<select value={voiceLanguage} onChange={(event) => setVoiceLanguage(event.target.value)}><option value="en-IN">English (India)</option><option value="kn-IN">ಕನ್ನಡ (Kannada)</option><option value="hi-IN">हिन्दी (Hindi)</option><option value="ta-IN">தமிழ் (Tamil)</option><option value="te-IN">తెలుగు (Telugu)</option><option value="mr-IN">मराठी (Marathi)</option></select></label><small>Speech support depends on your browser/device. Replies follow this language where possible.</small></div>
-        <form className="m-chat-compose" onSubmit={(event) => { event.preventDefault(); streamQuestion() }}><textarea rows={voiceFirst ? 4 : 3} maxLength={4000} value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); streamQuestion() } }} aria-label="Your message" placeholder="Ask about your crops, field observations, expenses, or farming plans…" /><div><Button type="button" variant="light" onClick={startVoice}>Microphone</Button>{voiceStatus.startsWith('Listening') && <Button type="button" variant="light" onClick={stopVoice}>Stop microphone</Button>}<Button type="submit" disabled={!question.trim() || loading}>{loading ? 'Getting response…' : 'Send'}</Button>{messages.some((message) => message.role === 'user') && <Button type="button" variant="light" onClick={retryLast} disabled={loading}>Regenerate last answer</Button>}<small>Enter to send · Shift + Enter for a new line</small></div></form>
-        {voiceStatus && !voiceFirst && <p className="m-muted" role="status">{voiceStatus}</p>}{error && <p className="m-error" role="alert">{error}</p>}{notice && <p className="m-success" role="status">{notice}</p>}
-        <p className="m-warning">AI responses can be wrong. Do not treat them as a disease diagnosis, soil test, pesticide prescription, live price, or official eligibility decision.</p>
-      </Card>
-    </div>
-  </div>
 }
 
 function NotificationsPage() {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useFarm } from '../AppMvp.jsx'
+import { useFarm } from '../FarmContext.jsx'
 import { SUPPORTED_LANGUAGES, t } from '../translations.js'
 
 export function AuthPage({ initialMode = 'register' }) {
@@ -144,6 +144,29 @@ export function AuthPage({ initialMode = 'register' }) {
         if (setToken) setToken(token)
         if (setUser) setUser(user)
 
+        // Ensure profile exists for logged in farmer
+        try {
+          const existingProfile = JSON.parse(localStorage.getItem('farm-saathi:profile') || 'null')
+          if (!existingProfile) {
+            const fallbackProfile = {
+              name: user?.name || form.email.split('@')[0] || 'Farmer',
+              email: form.email.trim(),
+              phone: '+91 98765 43210',
+              state: 'Karnataka',
+              district: 'Mandya',
+              village: 'Srirangapatna',
+              landSize: 3.5,
+              landUnit: 'acres',
+              soil: 'Loamy',
+              water: 'Adequate / Irrigated',
+              irrigation: 'Drip / Sprinkler',
+              budget: 60000,
+            }
+            localStorage.setItem('farm-saathi:profile', JSON.stringify(fallbackProfile))
+            if (setProfile) setProfile(fallbackProfile)
+          }
+        } catch {}
+
         // Immediately open the dashboard
         navigate('/')
       }
@@ -161,6 +184,23 @@ export function AuthPage({ initialMode = 'register' }) {
     localStorage.setItem('farm-saathi:user', JSON.stringify(guestUser))
     if (setToken) setToken(guestToken)
     if (setUser) setUser(guestUser)
+
+    const guestProfile = {
+      name: 'Farmer Guest',
+      email: 'guest@farmsaathi.in',
+      phone: '+91 98765 43210',
+      state: 'Karnataka',
+      district: 'Mandya',
+      village: 'Srirangapatna',
+      landSize: 3.5,
+      landUnit: 'acres',
+      soil: 'Loamy',
+      water: 'Adequate / Irrigated',
+      irrigation: 'Drip / Sprinkler',
+      budget: 50000,
+    }
+    localStorage.setItem('farm-saathi:profile', JSON.stringify(guestProfile))
+    if (setProfile) setProfile(guestProfile)
     navigate('/')
   }
 

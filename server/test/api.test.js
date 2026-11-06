@@ -234,7 +234,9 @@ test('registration, login, protected history, and Gemini-missing error work', as
     body: JSON.stringify({ message: 'How do I care for tomatoes?', history: [] }),
   })
   assert.equal(guestStream.status, 200)
-  assert.match(await guestStream.text(), /event: error/)
+  const guestText = await guestStream.text()
+  assert.match(guestText, /event: meta[\s\S]*"source":"local"/)
+  assert.match(guestText, /Tomato/)
 
   const login = await request('/api/auth/login', {
     method: 'POST',
@@ -250,7 +252,7 @@ test('registration, login, protected history, and Gemini-missing error work', as
   const chat = await request('/api/chat', {
     method: 'POST',
     token: loggedIn.token,
-    body: JSON.stringify({ conversationId, message: 'How do I care for my crop?', context: { crops: [] } }),
+    body: JSON.stringify({ conversationId, message: 'Tell me a story about the history of farming.', context: { crops: [] } }),
   })
   assert.equal(chat.status, 503)
   assert.match((await chat.json()).error, /GEMINI_API_KEY/)
@@ -263,7 +265,7 @@ test('registration, login, protected history, and Gemini-missing error work', as
     body: JSON.stringify({ conversationId: secondConversation.conversationId, message: 'Test streaming error handling.' }),
   })
   assert.equal(streamResponse.status, 200)
-  assert.match(await streamResponse.text(), /event: error/)
+  assert.match(await streamResponse.text(), /local-fallback[\s\S]*GEMINI_API_KEY/)
 
   const historyResponse = await request('/api/chat/history', { token: loggedIn.token })
   const { conversations } = await historyResponse.json()

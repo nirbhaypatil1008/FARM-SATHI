@@ -52,7 +52,7 @@ export function receiveCropImage(req, res, next) {
 
 export async function supportedCropList(_req, res) {
   try {
-    const response = await fetch(`${config.AI_SERVICE_URL.replace(/\/+$/, '')}/api/disease/supported-crops`, {
+    const response = await fetch(new URL(`${(process.env.AI_SERVICE_URL || config.AI_SERVICE_URL).replace(/\/+$/, '')}/api/disease/supported-crops`).toString(), {
       signal: AbortSignal.timeout(5000),
     })
     const body = await response.json().catch(() => ({}))
@@ -109,7 +109,7 @@ export async function diagnoseCrop(req, res, next) {
     if (input.cropName) form.set('crop_name', input.cropName)
     let response
     try {
-      response = await fetch(`${config.AI_SERVICE_URL.replace(/\/+$/, '')}/api/disease/predict`, {
+      response = await fetch(new URL(`${(process.env.AI_SERVICE_URL || config.AI_SERVICE_URL).replace(/\/+$/, '')}/api/disease/predict`).toString(), {
         method: 'POST',
         body: form,
         signal: AbortSignal.timeout(90_000),

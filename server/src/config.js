@@ -13,10 +13,10 @@ const environmentSchema = z.object({
   CLIENT_URL: z.string().url().default('http://localhost:5173'),
   JWT_SECRET: z.string().optional(),
   JWT_EXPIRES_IN: z.string().regex(/^\d+(s|m|h|d|w|y)$/, 'Use a duration such as 30m, 12h or 7d.').default('7d'),
-  DATABASE_PATH: z.string().default('./data/farm-saathi.sqlite'),
+  DATABASE_PATH: z.string().default(process.env.VERCEL ? '/tmp/farm-saathi.sqlite' : './data/farm-saathi.sqlite'),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.8-flash'),
-  AI_SERVICE_URL: z.string().url().default('http://127.0.0.1:8000'),
+  AI_SERVICE_URL: z.string().default('http://127.0.0.1:8000'),
 })
 
 const parsed = environmentSchema.safeParse(process.env)
