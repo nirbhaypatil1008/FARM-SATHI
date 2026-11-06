@@ -65,6 +65,11 @@ const upload = multer({
   },
 })
 
+function aiServiceHeaders() {
+  const token = process.env.AI_SERVICE_TOKEN || config.AI_SERVICE_TOKEN
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 export function receiveSoilImage(req, res, next) {
   upload.single('image')(req, res, (error) => {
     if (!error) return next()
@@ -79,6 +84,7 @@ export function receiveSoilImage(req, res, next) {
 export async function soilModelStatus(_req, res) {
   try {
     const response = await fetch(new URL(`${(process.env.AI_SERVICE_URL || config.AI_SERVICE_URL).replace(/\/+$/, '')}/api/soil/status`).toString(), {
+      headers: aiServiceHeaders(),
       signal: AbortSignal.timeout(5000),
     })
     const body = await response.json().catch(() => ({}))
@@ -142,6 +148,7 @@ export async function analyzeSoil(req, res, next) {
     try {
       response = await fetch(new URL(`${(process.env.AI_SERVICE_URL || config.AI_SERVICE_URL).replace(/\/+$/, '')}/api/soil/predict`).toString(), {
         method: 'POST',
+        headers: aiServiceHeaders(),
         body: form,
         signal: AbortSignal.timeout(90_000),
       })

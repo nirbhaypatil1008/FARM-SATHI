@@ -1,0 +1,23 @@
+# Python Virtual Environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Raw Image Datasets
+data/
+data/soil_repo/
+*.zip
+*.tar.gz
+
+# Training Scripts & Notebooks
+train_*.py
+requirements-training.txt
+tests/
+
+# Environment files
+.env
+.env.local
+

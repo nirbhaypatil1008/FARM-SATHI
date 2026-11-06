@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -7,6 +8,7 @@ SERVICE_DIRECTORY = Path(__file__).resolve().parents[1]
 load_dotenv(SERVICE_DIRECTORY / ".env")
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .image_validator import ImageValidationError, MAX_IMAGE_BYTES, validate_and_preprocess_image
@@ -63,6 +65,35 @@ app = FastAPI(
     description="Separate local MobileNetV2 services for plant-disease and generic soil-image classification.",
     lifespan=lifespan,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def verify_service_token(request: Request, call_next):
+    if request.method == "OPTIONS" or request.url.path in {"/health", "/docs", "/openapi.json"}:
+        return await call_next(request)
+    expected_token = os.getenv("AI_SERVICE_TOKEN")
+    if expected_token:
+        auth_header = request.headers.get("Authorization", "")
+        token_header = request.headers.get("x-ai-service-token", "")
+        provided = ""
+        if auth_header.startswith("Bearer "):
+            provided = auth_header[7:].strip()
+        elif token_header:
+            provided = token_header.strip()
+        if provided != expected_token:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized: Invalid or missing AI service authentication token."},
+            )
+    return await call_next(request)
 
 
 @app.get("/health")

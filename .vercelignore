@@ -1,0 +1,41 @@
+# Virtual Environments and Python Cache
+.venv/
+venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Raw Image Datasets and Large Data Archives
+ai-service/data/
+**/data/soil_repo/
+*.zip
+*.tar.gz
+*.tar
+
+# Development, Training scripts and Tests
+ai-service/train_*.py
+ai-service/requirements-training.txt
+ai-service/tests/
+ai-service/.venv/
+
+# Local Environment Variables and Secrets
+.env
+.env.local
+.env.*.local
+server/.env
+ai-service/.env
+
+# Local SQLite databases (prevent bundling state)
+*.sqlite
+*.sqlite-journal
+*.db
+server/*.sqlite
+server/data/*.sqlite
+
+# Git and tooling
+.git/
+.github/
+.vscode/
+.idea/
+

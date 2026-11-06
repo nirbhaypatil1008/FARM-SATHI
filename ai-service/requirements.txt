@@ -1,7 +1,8 @@
 fastapi>=0.115,<1
 uvicorn[standard]>=0.34,<1
 python-multipart>=0.0.20,<1
-tensorflow>=2.18,<2.21
+tensorflow-cpu>=2.18,<2.21; sys_platform != "win32"
+tensorflow>=2.18,<2.21; sys_platform == "win32"
 Pillow>=11,<13
 numpy>=1.26,<2.3
 pydantic>=2.10,<3

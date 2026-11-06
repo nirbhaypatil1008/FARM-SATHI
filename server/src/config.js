@@ -20,6 +20,7 @@ const environmentSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.8-flash'),
   AI_SERVICE_URL: z.string().default('http://127.0.0.1:8000'),
+  AI_SERVICE_TOKEN: z.string().optional(),
 })
 
 const parsed = environmentSchema.safeParse(process.env)

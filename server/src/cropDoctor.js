@@ -35,6 +35,11 @@ const upload = multer({
   },
 })
 
+function aiServiceHeaders() {
+  const token = process.env.AI_SERVICE_TOKEN || config.AI_SERVICE_TOKEN
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 export function receiveCropImage(req, res, next) {
   upload.single('image')(req, res, (error) => {
     if (!error) return next()
@@ -49,6 +54,7 @@ export function receiveCropImage(req, res, next) {
 export async function supportedCropList(_req, res) {
   try {
     const response = await fetch(new URL(`${(process.env.AI_SERVICE_URL || config.AI_SERVICE_URL).replace(/\/+$/, '')}/api/disease/supported-crops`).toString(), {
+      headers: aiServiceHeaders(),
       signal: AbortSignal.timeout(5000),
     })
     const body = await response.json().catch(() => ({}))
@@ -107,6 +113,7 @@ export async function diagnoseCrop(req, res, next) {
     try {
       response = await fetch(new URL(`${(process.env.AI_SERVICE_URL || config.AI_SERVICE_URL).replace(/\/+$/, '')}/api/disease/predict`).toString(), {
         method: 'POST',
+        headers: aiServiceHeaders(),
         body: form,
         signal: AbortSignal.timeout(90_000),
       })
