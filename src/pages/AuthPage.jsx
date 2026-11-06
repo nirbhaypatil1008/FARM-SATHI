@@ -215,8 +215,7 @@ export function AuthPage({ initialMode = 'register' }) {
         {/* Brand Header */}
         <div className="m-auth-brand-header">
           <div className="m-auth-brand-badge">
-            <span className="m-auth-leaf-icon">🌱</span>
-            <h1>FARM-SATHI</h1>
+            <img src="/gemini-svg.svg" alt="Farm Saathi Logo" className="m-auth-brand-logo" />
           </div>
           <p className="m-auth-tagline">
             {t('Empowering farmers with AI-driven crop diagnostics, soil health analytics, and precision farming advisory.', language)}

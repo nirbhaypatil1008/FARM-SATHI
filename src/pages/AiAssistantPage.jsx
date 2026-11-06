@@ -1080,7 +1080,7 @@ export function AiAssistantPage({ voiceFirst = false }) {
         <div className="fs-sidebar-header">
           <div className="fs-sidebar-brand">
             <div className="fs-brand-logo">
-              <IconSprout className="fs-brand-svg" />
+              <img src="/favicon.svg" alt="Farm Saathi" className="fs-brand-svg" />
             </div>
             {!sidebarCollapsed && (
               <div className="fs-brand-meta">

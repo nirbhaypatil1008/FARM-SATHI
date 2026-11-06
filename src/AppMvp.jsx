@@ -131,14 +131,14 @@ function Layout() {
   return <div className={`m-app ${darkMode ? 'dark' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
     {mobileMenuOpen && <button className="m-sidebar-scrim" type="button" aria-label="Close navigation" onClick={closeMenu} />}
     <aside className="m-sidebar">
-      <div className="m-sidebar-brand-row"><NavLink className="m-brand" to="/" onClick={closeMenu}><span className="m-brand-leaf">✿</span><span className="m-brand-copy"><b>FARM SAATHI</b><small>Farming made friendly</small></span></NavLink><button className="m-sidebar-collapse" type="button" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>{sidebarCollapsed ? '»' : '«'}</button></div>
+      <div className="m-sidebar-brand-row"><NavLink className="m-brand" to="/" onClick={closeMenu} aria-label="Farm Saathi Home"><img src="/gemini-svg.svg" alt="Farm Saathi Logo" className="m-brand-logo" /></NavLink><button className="m-sidebar-collapse" type="button" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>{sidebarCollapsed ? '»' : '«'}</button></div>
       <nav className="m-nav">{navItems.map(([path, label, icon]) => <NavLink key={path} to={path} end={path === '/'} title={label} onClick={closeMenu} className="m-nav-link"><span className="m-nav-icon">{icon}</span><span className="m-nav-label">{t(label, language)}</span></NavLink>)}</nav>
       <div className="m-sidebar-note">Your farm information stays in this browser.</div>
     </aside>
     <main className="m-main">
       <header className="m-topbar">
         <button className="m-menu-toggle" type="button" aria-label="Open navigation menu" onClick={() => setMobileMenuOpen(true)}>☰</button>
-        <div className="m-mobile-brand"><span className="m-brand-leaf">✿</span><b>FARM SAATHI</b></div>
+        <div className="m-mobile-brand"><img src="/gemini-svg.svg" alt="Farm Saathi Logo" className="m-mobile-brand-logo" /></div>
         <form className="m-global-search" role="search" onSubmit={openSearchResult}><span aria-hidden="true">⌕</span><input aria-label="Search Farm Saathi pages" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search farm tools…" /><button type="submit">Search</button></form>
         <span className="m-location">⌖ {loc}</span>
         <div className="m-top-actions">
