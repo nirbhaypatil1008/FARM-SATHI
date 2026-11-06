@@ -12,7 +12,8 @@
 
 * { box-sizing: border-box; }
 html { min-width: 0; min-height: 100%; scroll-behavior: smooth; }
-body { min-width: 0; min-height: 100vh; margin: 0; background: #071f17; }
+body { min-width: 0; min-height: 100vh; margin: 0; background: #071f17; transition: background 0.3s ease; }
+body:has(.m-app:not(.dark)) { background: #edf5ee; }
 button, input, select, textarea { font: inherit; }
 img { max-width: 100%; display: block; }
 #root { min-height: 100vh; }

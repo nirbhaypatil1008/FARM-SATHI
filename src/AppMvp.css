@@ -1622,3 +1622,610 @@
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+/* ==========================================================================
+   KRISHI SAATHI UNIVERSAL GLASSMORPHISM SYSTEM (LIGHT & DARK THEMES)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Glassmorphic Atmosphere & Viewport (Light Theme)
+   -------------------------------------------------------------------------- */
+.m-app:not(.dark) {
+  --forest: #176b38;
+  --green: #2ea368;
+  --sun: #eab308;
+  --sky: #0ea5e9;
+  --orange: #d97706;
+  --cream: #f4f8f4;
+  --paper: rgba(255, 255, 255, 0.74);
+  --ink: #143522;
+  --muted: #4e6b57;
+  --line: rgba(23, 107, 56, 0.14);
+  --soft-green: rgba(46, 163, 104, 0.12);
+  color: #143522 !important;
+  background:
+    radial-gradient(circle at 10% 15%, rgba(85, 185, 71, 0.18) 0%, transparent 45%),
+    radial-gradient(circle at 90% 20%, rgba(85, 189, 235, 0.16) 0%, transparent 42%),
+    radial-gradient(circle at 50% 85%, rgba(255, 212, 71, 0.14) 0%, transparent 50%),
+    linear-gradient(135deg, #f3f8f3 0%, #eaf3eb 45%, #f6faf5 100%) !important;
+}
+
+.m-app:not(.dark)::before {
+  background-image:
+    linear-gradient(120deg, rgba(243, 248, 243, 0.85) 0%, rgba(235, 244, 236, 0.76) 48%, rgba(246, 250, 245, 0.88) 100%),
+    radial-gradient(ellipse at 80% 12%, rgba(85, 185, 71, 0.2), transparent 45%),
+    url("https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=2400&q=82") !important;
+  background-color: #edf5ee !important;
+  background-position: center, center, center 54% !important;
+  background-size: cover !important;
+}
+
+.m-app:not(.dark)::after {
+  background: radial-gradient(ellipse at 50% 0%, transparent 5%, rgba(255, 255, 255, 0.22) 100%) !important;
+}
+
+/* --------------------------------------------------------------------------
+   2. Glassmorphic Atmosphere & Viewport (Dark Theme)
+   -------------------------------------------------------------------------- */
+.m-app.dark {
+  --forest: #34d399;
+  --green: #4ade80;
+  --sun: #facc15;
+  --sky: #38bdf8;
+  --orange: #fb923c;
+  --cream: #04140d;
+  --paper: rgba(12, 38, 26, 0.72);
+  --ink: #ffffff;
+  --muted: #a3b8aa;
+  --line: rgba(81, 199, 141, 0.2);
+  --soft-green: rgba(52, 211, 153, 0.14);
+  color: #ffffff !important;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(52, 211, 153, 0.16) 0%, transparent 48%),
+    radial-gradient(circle at 82% 22%, rgba(56, 189, 248, 0.14) 0%, transparent 44%),
+    radial-gradient(circle at 50% 80%, rgba(20, 80, 52, 0.28) 0%, transparent 55%),
+    linear-gradient(135deg, #04140d 0%, #071f17 50%, #020c08 100%) !important;
+}
+
+.m-app.dark::before {
+  background-image:
+    linear-gradient(115deg, rgba(3, 17, 11, 0.93) 0%, rgba(5, 28, 19, 0.82) 48%, rgba(2, 12, 8, 0.95) 100%),
+    radial-gradient(ellipse at 82% 10%, rgba(52, 211, 153, 0.24), transparent 42%),
+    url("https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=2400&q=82") !important;
+  background-color: #04140d !important;
+  background-position: center, center, center 54% !important;
+  background-size: cover !important;
+}
+
+.m-app.dark::after {
+  background: radial-gradient(ellipse at 50% 0%, transparent 5%, rgba(0, 0, 0, 0.45) 100%) !important;
+}
+
+/* --------------------------------------------------------------------------
+   3. Glass Cards & Containers (Universal & Themed)
+   -------------------------------------------------------------------------- */
+.m-card,
+.m-app .m-card {
+  border-radius: 20px !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.24s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.24s ease !important;
+}
+
+/* Light Theme Cards */
+.m-app:not(.dark) .m-card {
+  background: rgba(255, 255, 255, 0.74) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.88) !important;
+  box-shadow:
+    0 12px 32px 0 rgba(22, 65, 38, 0.07),
+    0 2px 6px 0 rgba(0, 0, 0, 0.02),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.95) !important;
+  color: #143522 !important;
+}
+
+.m-app:not(.dark) .m-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 1) !important;
+  box-shadow:
+    0 18px 42px 0 rgba(22, 65, 38, 0.11),
+    0 3px 8px 0 rgba(0, 0, 0, 0.03),
+    inset 0 1px 1px 0 #ffffff !important;
+}
+
+/* Dark Theme Cards */
+.m-app.dark .m-card {
+  background: rgba(12, 38, 26, 0.72) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.24) !important;
+  box-shadow:
+    0 14px 40px 0 rgba(0, 0, 0, 0.45),
+    0 2px 8px 0 rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.m-app.dark .m-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(81, 199, 141, 0.44) !important;
+  box-shadow:
+    0 18px 48px 0 rgba(0, 0, 0, 0.55),
+    0 4px 12px 0 rgba(81, 199, 141, 0.15),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18) !important;
+}
+
+/* --------------------------------------------------------------------------
+   4. Glass Sidebar & Topbar
+   -------------------------------------------------------------------------- */
+/* Topbar */
+.m-app .m-topbar {
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  transition: background 0.24s ease, border-color 0.24s ease !important;
+}
+
+.m-app:not(.dark) .m-topbar {
+  background: rgba(255, 255, 255, 0.75) !important;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 4px 20px rgba(18, 55, 34, 0.04) !important;
+}
+
+.m-app.dark .m-topbar {
+  background: rgba(5, 22, 15, 0.76) !important;
+  border-bottom: 1.5px solid rgba(81, 199, 141, 0.22) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Sidebar */
+.m-app .m-sidebar {
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  transition: width 0.22s ease, flex-basis 0.22s ease, transform 0.22s ease, background 0.24s ease !important;
+}
+
+.m-app:not(.dark) .m-sidebar {
+  background: rgba(12, 46, 31, 0.88) !important;
+  border-right: 1.5px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 6px 0 28px rgba(10, 38, 25, 0.14) !important;
+}
+
+.m-app.dark .m-sidebar {
+  background: rgba(4, 18, 12, 0.84) !important;
+  border-right: 1.5px solid rgba(81, 199, 141, 0.18) !important;
+  box-shadow: 6px 0 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Nav links in sidebar */
+.m-app .m-nav-link {
+  border-radius: 12px !important;
+  transition: all 0.2s ease !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+.m-app:not(.dark) .m-nav-link:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+}
+
+.m-app:not(.dark) .m-nav-link.active {
+  background: linear-gradient(135deg, rgba(85, 185, 71, 0.38) 0%, rgba(23, 107, 56, 0.32) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+}
+
+.m-app.dark .m-nav-link:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.m-app.dark .m-nav-link.active {
+  background: linear-gradient(135deg, rgba(81, 199, 141, 0.32) 0%, rgba(30, 90, 60, 0.3) 100%) !important;
+  border: 1px solid rgba(81, 199, 141, 0.35) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+}
+
+/* --------------------------------------------------------------------------
+   5. Glass Stats & Metric Cards (.m-stat)
+   -------------------------------------------------------------------------- */
+.m-app .m-stat {
+  border-radius: 18px !important;
+  backdrop-filter: blur(16px) saturate(170%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(170%) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.m-app:not(.dark) .m-stat {
+  background: rgba(255, 255, 255, 0.68) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 8px 24px rgba(22, 65, 38, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.95) !important;
+  color: #143522 !important;
+}
+
+.m-app:not(.dark) .m-stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(22, 65, 38, 0.08), inset 0 1px 1px #ffffff !important;
+}
+
+.m-app.dark .m-stat {
+  background: rgba(14, 44, 30, 0.7) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.22) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.m-app.dark .m-stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+}
+
+/* --------------------------------------------------------------------------
+   6. Glass Quick Action Cards (.m-quick-card)
+   -------------------------------------------------------------------------- */
+.m-app .m-quick-card {
+  border-radius: 18px !important;
+  backdrop-filter: blur(16px) saturate(175%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(175%) !important;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease !important;
+}
+
+/* Light Theme Quick Cards */
+.m-app:not(.dark) .m-quick-card {
+  border: 1.5px solid rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 8px 24px rgba(23, 75, 45, 0.06), inset 0 1px 1px rgba(255, 255, 255, 0.95) !important;
+  color: #143522 !important;
+}
+
+.m-app:not(.dark) .m-quick-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 32px rgba(23, 75, 45, 0.1), inset 0 1px 1px #ffffff !important;
+  border-color: #ffffff !important;
+}
+
+.m-app:not(.dark) .m-quick-card.mint {
+  background: rgba(230, 248, 230, 0.72) !important;
+}
+
+.m-app:not(.dark) .m-quick-card.yellow {
+  background: rgba(255, 246, 218, 0.72) !important;
+}
+
+.m-app:not(.dark) .m-quick-card.blue {
+  background: rgba(230, 246, 254, 0.72) !important;
+}
+
+.m-app:not(.dark) .m-quick-card.peach {
+  background: rgba(255, 241, 230, 0.72) !important;
+}
+
+/* Dark Theme Quick Cards */
+.m-app.dark .m-quick-card {
+  background: rgba(16, 50, 35, 0.72) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.24) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.m-app.dark .m-quick-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(81, 199, 141, 0.45) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+}
+
+.m-app.dark .m-quick-card.mint {
+  background: rgba(16, 52, 36, 0.74) !important;
+}
+
+.m-app.dark .m-quick-card.yellow {
+  background: rgba(56, 45, 18, 0.72) !important;
+  border-color: rgba(234, 179, 8, 0.32) !important;
+}
+
+.m-app.dark .m-quick-card.blue {
+  background: rgba(18, 45, 60, 0.72) !important;
+  border-color: rgba(56, 189, 248, 0.32) !important;
+}
+
+.m-app.dark .m-quick-card.peach {
+  background: rgba(56, 35, 20, 0.72) !important;
+  border-color: rgba(251, 146, 60, 0.32) !important;
+}
+
+/* --------------------------------------------------------------------------
+   7. Glass Inputs, Selects & Form Controls
+   -------------------------------------------------------------------------- */
+.m-app input:not([type="checkbox"]):not([type="file"]),
+.m-app select,
+.m-app textarea {
+  border-radius: 12px !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  transition: all 0.22s ease !important;
+}
+
+/* Light Theme Inputs */
+.m-app:not(.dark) input:not([type="checkbox"]):not([type="file"]),
+.m-app:not(.dark) select,
+.m-app:not(.dark) textarea {
+  background: rgba(255, 255, 255, 0.65) !important;
+  border: 1.5px solid rgba(23, 107, 56, 0.18) !important;
+  color: #143522 !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+}
+
+.m-app:not(.dark) input:focus,
+.m-app:not(.dark) select:focus,
+.m-app:not(.dark) textarea:focus {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: #2ea368 !important;
+  box-shadow: 0 0 0 3px rgba(46, 163, 104, 0.2), inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+  outline: none !important;
+}
+
+.m-app:not(.dark) input::placeholder,
+.m-app:not(.dark) textarea::placeholder {
+  color: #6a8272 !important;
+}
+
+/* Dark Theme Inputs */
+.m-app.dark input:not([type="checkbox"]):not([type="file"]),
+.m-app.dark select,
+.m-app.dark textarea {
+  background: rgba(4, 22, 15, 0.7) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.26) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+
+.m-app.dark input:focus,
+.m-app.dark select:focus,
+.m-app.dark textarea:focus {
+  background: rgba(4, 22, 15, 0.92) !important;
+  border-color: #51c78d !important;
+  box-shadow: 0 0 0 3px rgba(81, 199, 141, 0.28), inset 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+  outline: none !important;
+}
+
+.m-app.dark input::placeholder,
+.m-app.dark textarea::placeholder {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Search Input */
+.m-app .m-global-search {
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-radius: 12px !important;
+  transition: all 0.2s ease !important;
+}
+
+.m-app:not(.dark) .m-global-search {
+  background: rgba(255, 255, 255, 0.65) !important;
+  border: 1.5px solid rgba(23, 107, 56, 0.16) !important;
+}
+
+.m-app:not(.dark) .m-global-search:focus-within {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: #2ea368 !important;
+  box-shadow: 0 0 0 3px rgba(46, 163, 104, 0.18) !important;
+}
+
+.m-app.dark .m-global-search {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.22) !important;
+}
+
+.m-app.dark .m-global-search:focus-within {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: #51c78d !important;
+  box-shadow: 0 0 0 3px rgba(81, 199, 141, 0.25) !important;
+}
+
+/* --------------------------------------------------------------------------
+   8. Glass Interactive Controls (Theme toggle, chips, buttons)
+   -------------------------------------------------------------------------- */
+.m-app .m-language select,
+.m-app .m-theme,
+.m-app .m-notification-button,
+.m-app .m-profile-chip {
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  transition: all 0.2s ease !important;
+}
+
+.m-app:not(.dark) .m-language select,
+.m-app:not(.dark) .m-theme,
+.m-app:not(.dark) .m-notification-button,
+.m-app:not(.dark) .m-profile-chip {
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 4px 14px rgba(22, 65, 38, 0.05) !important;
+  color: #143522 !important;
+}
+
+.m-app:not(.dark) .m-theme:hover,
+.m-app:not(.dark) .m-notification-button:hover,
+.m-app:not(.dark) .m-profile-chip:hover {
+  background: rgba(255, 255, 255, 0.94) !important;
+  transform: translateY(-1px);
+}
+
+.m-app.dark .m-language select,
+.m-app.dark .m-theme,
+.m-app.dark .m-notification-button,
+.m-app.dark .m-profile-chip {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.22) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+  color: #ffffff !important;
+}
+
+.m-app.dark .m-theme:hover,
+.m-app.dark .m-notification-button:hover,
+.m-app.dark .m-profile-chip:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  transform: translateY(-1px);
+}
+
+/* Dropdown Menu */
+.m-app .m-profile-dropdown {
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border-radius: 16px !important;
+}
+
+.m-app:not(.dark) .m-profile-dropdown {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 18px 45px rgba(22, 65, 38, 0.12) !important;
+  color: #143522 !important;
+}
+
+.m-app.dark .m-profile-dropdown {
+  background: rgba(8, 28, 20, 0.92) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.3) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5) !important;
+  color: #ffffff !important;
+}
+
+/* --------------------------------------------------------------------------
+   9. Glass Chat, AI Assistant & Floating Components
+   -------------------------------------------------------------------------- */
+.m-chat-sidebar,
+.m-chat-main.m-card,
+.m-assistant-preview {
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-radius: 20px !important;
+}
+
+.m-app:not(.dark) .m-chat-sidebar,
+.m-app:not(.dark) .m-chat-main.m-card,
+.m-app:not(.dark) .m-assistant-preview {
+  background: rgba(255, 255, 255, 0.74) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 12px 35px rgba(22, 65, 38, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.95) !important;
+}
+
+.m-app.dark .m-chat-sidebar,
+.m-app.dark .m-chat-main.m-card,
+.m-app.dark .m-assistant-preview {
+  background: rgba(12, 38, 26, 0.75) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.25) !important;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Chat suggestions buttons */
+.m-app:not(.dark) .m-chat-suggestions button {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(10px) !important;
+  border: 1.5px solid rgba(23, 107, 56, 0.16) !important;
+  color: #143522 !important;
+}
+
+.m-app:not(.dark) .m-chat-suggestions button:hover {
+  background: rgba(232, 248, 235, 0.85) !important;
+  border-color: #2ea368 !important;
+}
+
+.m-app.dark .m-chat-suggestions button {
+  background: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(10px) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.22) !important;
+  color: #ffffff !important;
+}
+
+.m-app.dark .m-chat-suggestions button:hover {
+  background: rgba(81, 199, 141, 0.16) !important;
+  border-color: #51c78d !important;
+}
+
+/* Floating Launcher Orb */
+.m-assistant-launcher {
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  box-shadow: 0 10px 30px rgba(23, 107, 56, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+}
+
+/* --------------------------------------------------------------------------
+   10. Glass Sub-Widgets, Metrics, Alerts & Lists
+   -------------------------------------------------------------------------- */
+/* Weather chips */
+.m-app:not(.dark) .m-dashboard-weather > div,
+.m-app:not(.dark) .m-forecast > div,
+.m-app:not(.dark) .m-soil-summary-grid > div {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 4px 14px rgba(22, 65, 38, 0.04) !important;
+}
+
+.m-app.dark .m-dashboard-weather > div,
+.m-app.dark .m-forecast > div,
+.m-app.dark .m-soil-summary-grid > div {
+  background: rgba(14, 46, 32, 0.65) !important;
+  backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(81, 199, 141, 0.2) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* Glass Status Banners */
+.m-app:not(.dark) .m-dashboard-alert,
+.m-app:not(.dark) .m-not-connected,
+.m-app:not(.dark) .m-assistant-banner,
+.m-app:not(.dark) .m-voice-console,
+.m-app:not(.dark) .m-auth-tabs,
+.m-app:not(.dark) .m-demo-banner {
+  background: rgba(255, 255, 255, 0.68) !important;
+  backdrop-filter: blur(14px) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 6px 20px rgba(22, 65, 38, 0.05) !important;
+}
+
+.m-app.dark .m-dashboard-alert,
+.m-app.dark .m-not-connected,
+.m-app.dark .m-assistant-banner,
+.m-app.dark .m-voice-console,
+.m-app.dark .m-auth-tabs,
+.m-app.dark .m-demo-banner {
+  background: rgba(10, 34, 23, 0.68) !important;
+  backdrop-filter: blur(14px) !important;
+  border: 1.5px solid rgba(81, 199, 141, 0.22) !important;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Mobile Bottom Nav Bar */
+.m-app:not(.dark) .m-bottom-nav {
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 -8px 28px rgba(22, 65, 38, 0.08) !important;
+}
+
+.m-app.dark .m-bottom-nav {
+  background: rgba(4, 20, 14, 0.82) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-top: 1.5px solid rgba(81, 199, 141, 0.2) !important;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Table Glass Styling */
+.m-markdown th,
+.m-markdown td {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.m-app:not(.dark) .m-markdown th,
+.m-app:not(.dark) .m-markdown td {
+  border-color: rgba(23, 107, 56, 0.12) !important;
+}
+
+.m-app:not(.dark) .m-markdown tr:nth-child(even) {
+  background: rgba(23, 107, 56, 0.04) !important;
+}
+
+.m-app.dark .m-markdown tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+
